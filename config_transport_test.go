@@ -38,7 +38,7 @@ type rekeyNoise struct {
 	mockNoiseTransport
 }
 
-func (r rekeyNoise) Send(_ *toxtransport.Packet, _ net.Addr) error {
+func (r *rekeyNoise) Send(_ *toxtransport.Packet, _ net.Addr) error {
 	return toxtransport.ErrRekeyRequired
 }
 

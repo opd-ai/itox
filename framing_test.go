@@ -2,6 +2,7 @@ package itox
 
 import (
 	"bytes"
+	"sync"
 	"testing"
 	"time"
 )
@@ -16,7 +17,8 @@ func TestFragmentRoundTrip(t *testing.T) {
 		t.Fatalf("expected fragmented payload, got %d frame(s)", len(frames))
 	}
 
-	r := newReassembler(30 * time.Second)
+	r := newReassembler(30*time.Second, 256)
+	defer r.close()
 	var out []byte
 	for _, f := range frames {
 		joined, complete, err := r.addFrame(f)
@@ -44,9 +46,17 @@ func TestParseFrameValidation(t *testing.T) {
 }
 
 func TestReassemblerExpiresStaleFragments(t *testing.T) {
-	r := newReassembler(10 * time.Millisecond)
+	r := newReassembler(10*time.Millisecond, 256)
+	defer r.close()
 	now := time.Now()
-	r.now = func() time.Time { return now }
+	var nowMu sync.Mutex
+	r.mu.Lock()
+	r.now = func() time.Time {
+		nowMu.Lock()
+		defer nowMu.Unlock()
+		return now
+	}
+	r.mu.Unlock()
 
 	frames, err := fragmentMessage(9, bytes.Repeat([]byte{1}, MaxToxPayload))
 	if err != nil {
@@ -55,7 +65,9 @@ func TestReassemblerExpiresStaleFragments(t *testing.T) {
 	if _, _, err := r.addFrame(frames[0]); err != nil {
 		t.Fatal(err)
 	}
+	nowMu.Lock()
 	now = now.Add(20 * time.Millisecond)
+	nowMu.Unlock()
 	if _, complete, err := r.addFrame(frames[1]); err != nil {
 		t.Fatal(err)
 	} else if complete {

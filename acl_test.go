@@ -34,7 +34,7 @@ func TestFriendACLIsAuthorized(t *testing.T) {
 		}
 	})
 
-	t.Run("unauthorized logs short key", func(t *testing.T) {
+	t.Run("unauthorized logs rejection event", func(t *testing.T) {
 		var buf bytes.Buffer
 		logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		acl := newFriendACLForTests(&mockACLTox{lookupErr: errors.New("no friend")}, logger)
@@ -42,8 +42,13 @@ func TestFriendACLIsAuthorized(t *testing.T) {
 			t.Fatal("expected unauthorized")
 		}
 		out := buf.String()
-		if !strings.Contains(out, "tox_pubkey=4200000000000000") {
-			t.Fatalf("expected 8-byte key prefix in logs, got %q", out)
+		// Verify that rejection is logged without key material
+		if !strings.Contains(out, "acl_reject") {
+			t.Fatalf("expected acl_reject event in logs, got %q", out)
+		}
+		// Ensure no key material is included in logs (for security)
+		if strings.Contains(out, "4200000000000000") {
+			t.Fatalf("expected no key material in logs for security, got %q", out)
 		}
 	})
 	

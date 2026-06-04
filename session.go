@@ -39,7 +39,7 @@ type ToxSession struct {
 	onRekey func()
 }
 
-func newToxSession(ctx context.Context, remoteAddr net.Addr, noise noiseSender, fragmentTimeout time.Duration, retryTimeout time.Duration, maxSendQueue int, logger *slog.Logger, onRekey func()) *ToxSession {
+func newToxSession(ctx context.Context, remoteAddr net.Addr, noise noiseSender, fragmentTimeout time.Duration, retryTimeout time.Duration, maxSendQueue int, maxConcurrentStreams int, logger *slog.Logger, onRekey func()) *ToxSession {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -52,7 +52,7 @@ func newToxSession(ctx context.Context, remoteAddr net.Addr, noise noiseSender, 
 		noise:        noise,
 		logger:       logger,
 		retryTimeout: retryTimeout,
-		reassembler:  newReassembler(fragmentTimeout),
+		reassembler:  newReassembler(fragmentTimeout, maxConcurrentStreams),
 		inbound:      make(chan i2np.Message, maxSendQueue),
 		sendQ:        make(chan i2np.Message, maxSendQueue),
 		closing:      make(chan struct{}),
@@ -64,6 +64,8 @@ func newToxSession(ctx context.Context, remoteAddr net.Addr, noise noiseSender, 
 	return s
 }
 
+// QueueSendI2NP enqueues an I2NP message to be sent through this session.
+// Returns ErrSessionClosed if the session is closed, or ErrSendQueueFull if the send queue is full.
 func (s *ToxSession) QueueSendI2NP(msg i2np.Message) error {
 	select {
 	case <-s.closed:
@@ -78,8 +80,11 @@ func (s *ToxSession) QueueSendI2NP(msg i2np.Message) error {
 	}
 }
 
+// SendQueueSize returns the current number of I2NP messages waiting in the send queue.
 func (s *ToxSession) SendQueueSize() int { return len(s.sendQ) }
 
+// ReadNextI2NP blocks until an I2NP message arrives on this session.
+// Returns ErrSessionClosed if the session is closed before a message arrives.
 func (s *ToxSession) ReadNextI2NP() (i2np.Message, error) {
 	select {
 	case msg, ok := <-s.inbound:
@@ -92,6 +97,7 @@ func (s *ToxSession) ReadNextI2NP() (i2np.Message, error) {
 	}
 }
 
+// Close terminates this session and cleans up resources.
 func (s *ToxSession) Close() error {
 	s.closeMu.Lock()
 	defer s.closeMu.Unlock()
@@ -102,40 +108,67 @@ func (s *ToxSession) Close() error {
 		close(s.sendQ)
 	}
 	<-s.closed
+	s.reassembler.close()
 	return nil
 }
 
 func (s *ToxSession) nextStreamID() uint16 {
 	s.streamMu.Lock()
 	defer s.streamMu.Unlock()
-	s.streamID++
-	if s.streamID == 0 {
-		s.streamID = 1
+	// Skip stream ID 0 (reserved for keepalive) and any stream IDs still being reassembled
+	attempts := 0
+	for attempts < 1000 {
+		s.streamID++
+		if s.streamID == 0 {
+			s.streamID = 1
+		}
+		// Avoid reusing stream IDs that are still being reassembled
+		if !s.reassembler.isStreamActive(s.streamID) {
+			return s.streamID
+		}
+		attempts++
 	}
+	// If we can't find an unused ID after 1000 attempts, log a warning and return the next one.
+	// This shouldn't happen in practice with 65536 possible IDs unless there's
+	// a massive number of concurrent slow reassemblies.
+	s.logger.Warn("nextStreamID fallback after 1000 attempts; using potentially active stream ID",
+		"streamID", s.streamID,
+		"attempts", attempts)
 	return s.streamID
 }
 
 func (s *ToxSession) sendLoop() {
+	defer s.reassembler.close()
 	defer close(s.inbound) // closed second: safe after s.closed signals shutdown
 	defer close(s.closed)  // closed first: stops handleInboundPacket before inbound is closed
-	for msg := range s.sendQ {
-		if msg == nil {
-			continue
-		}
-		encoded, err := msg.MarshalBinary()
-		if err != nil {
-			s.logger.Error("marshal i2np failed", slog.Any("error", err))
-			continue
-		}
-		frames, err := fragmentMessage(s.nextStreamID(), encoded)
-		if err != nil {
-			s.logger.Error("fragment i2np failed", slog.Any("error", err))
-			continue
-		}
-		for _, frame := range frames {
-			if err := s.sendWithRetry(frame); err != nil {
-				s.logger.Error("send frame failed", slog.Any("error", err))
-				break
+	for {
+		select {
+		case <-s.ctx.Done():
+			// Context canceled; stop processing
+			return
+		case msg, ok := <-s.sendQ:
+			if !ok {
+				// Channel closed; normal shutdown
+				return
+			}
+			if msg == nil {
+				continue
+			}
+			encoded, err := msg.MarshalBinary()
+			if err != nil {
+				s.logger.Error("marshal i2np failed", slog.Any("error", err))
+				continue
+			}
+			frames, err := fragmentMessage(s.nextStreamID(), encoded)
+			if err != nil {
+				s.logger.Error("fragment i2np failed", slog.Any("error", err))
+				continue
+			}
+			for _, frame := range frames {
+				if err := s.sendWithRetry(frame); err != nil {
+					s.logger.Error("send frame failed", slog.Any("error", err))
+					break
+				}
 			}
 		}
 	}

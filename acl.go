@@ -2,7 +2,6 @@ package itox
 
 import (
 	"crypto/subtle"
-	"encoding/hex"
 	"log/slog"
 	"time"
 
@@ -39,12 +38,10 @@ func (a *FriendACL) IsAuthorized(toxPubKey [32]byte) bool {
 		return false
 	}
 
-	_, err := a.tox.GetFriendByPublicKey(toxPubKey)
-	if err != nil {
-		a.logUnauthorized(toxPubKey)
-		return false
-	}
-
+	// Avoid timing side-channel: always iterate the full friend list.
+	// This prevents attackers from using timing differences to determine
+	// whether a key is in the friend list. We compare against all friends
+	// using constant-time comparison regardless of any early lookups.
 	friends := a.tox.GetFriends()
 	authorized := 0
 	for _, f := range friends {
@@ -53,9 +50,11 @@ func (a *FriendACL) IsAuthorized(toxPubKey [32]byte) bool {
 		}
 		authorized |= subtle.ConstantTimeCompare(f.PublicKey[:], toxPubKey[:])
 	}
+	
 	if authorized == 1 {
 		return true
 	}
+	
 	a.logUnauthorized(toxPubKey)
 	return false
 }
@@ -64,10 +63,9 @@ func (a *FriendACL) logUnauthorized(key [32]byte) {
 	if a == nil || a.logger == nil {
 		return
 	}
-	prefix := hex.EncodeToString(key[:8])
+	// Log rejection without including key material to prevent enumeration attacks
 	a.logger.LogAttrs(nil, slog.LevelDebug, "itox acl reject",
 		slog.String("event", "acl_reject"),
-		slog.String("tox_pubkey", prefix),
 		slog.Time("timestamp", a.now()),
 	)
 }
