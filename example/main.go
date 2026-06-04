@@ -444,9 +444,9 @@ func createNoiseTransport(ctx context.Context, toxSecretKey [32]byte, udpPort in
 
 	// Create protocol capabilities with all advanced security features explicitly enabled
 	capabilities := toxtransport.DefaultProtocolCapabilities()
-	// Ensure PolicyNoiseWithRatchet is explicitly set for maximum forward secrecy
-	capabilities.SessionPolicy = toxtransport.PolicyNoiseWithRatchet
+	// Note: PolicyNoiseWithRatchet is already set by DefaultProtocolCapabilities()
 	// Enable legacy fallback for compatibility with peers that don't support advanced features
+	// (DefaultProtocolCapabilities disables this by default for security-by-default operation)
 	capabilities.EnableLegacyFallback = true
 	
 	// Wrap with NegotiatingTransport for version negotiation and advanced features
@@ -457,8 +457,8 @@ func createNoiseTransport(ctx context.Context, toxSecretKey [32]byte, udpPort in
 	}
 
 	logger.Info("NegotiatingTransport created with advanced security features",
-		slog.String("protocol", "Noise-IK + Double Ratchet"),
 		slog.String("policy", capabilities.SessionPolicy.String()),
+		slog.String("note", "Negotiation will use Noise-IK with Double Ratchet when both peers support it, with fallback to legacy for compatibility"),
 	)
 	return itox.NewNegotiatingTransportAdapter(negotiatingTransport), nil
 }
