@@ -16,7 +16,7 @@ func TestFragmentRoundTrip(t *testing.T) {
 		t.Fatalf("expected fragmented payload, got %d frame(s)", len(frames))
 	}
 
-	r := newReassembler(30 * time.Second)
+	r := newReassembler(30*time.Second, 256)
 	var out []byte
 	for _, f := range frames {
 		joined, complete, err := r.addFrame(f)
@@ -44,7 +44,7 @@ func TestParseFrameValidation(t *testing.T) {
 }
 
 func TestReassemblerExpiresStaleFragments(t *testing.T) {
-	r := newReassembler(10 * time.Millisecond)
+	r := newReassembler(10*time.Millisecond, 256)
 	now := time.Now()
 	r.now = func() time.Time { return now }
 

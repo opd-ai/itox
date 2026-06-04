@@ -20,14 +20,26 @@ type reassemblyState struct {
 }
 
 type reassembler struct {
-	timeout time.Duration
-	now     func() time.Time
-	mu      sync.Mutex
-	streams map[uint16]*reassemblyState
+	timeout        time.Duration
+	maxConcurrent  int
+	now            func() time.Time
+	mu             sync.Mutex
+	streams        map[uint16]*reassemblyState
+	reapCloseCh    chan struct{}
+	reapDone       chan struct{}
 }
 
-func newReassembler(timeout time.Duration) *reassembler {
-	return &reassembler{timeout: timeout, now: time.Now, streams: make(map[uint16]*reassemblyState)}
+func newReassembler(timeout time.Duration, maxConcurrent int) *reassembler {
+	r := &reassembler{
+		timeout:        timeout,
+		maxConcurrent:  maxConcurrent,
+		now:            time.Now,
+		streams:        make(map[uint16]*reassemblyState),
+		reapCloseCh:    make(chan struct{}),
+		reapDone:       make(chan struct{}),
+	}
+	go r.backgroundReaper()
+	return r
 }
 
 func fragmentMessage(streamID uint16, payload []byte) ([][]byte, error) {
@@ -93,7 +105,14 @@ func (r *reassembler) addFrame(frame []byte) ([]byte, bool, error) {
 	}
 
 	state := r.streams[streamID]
-	if state == nil || now.Sub(state.createdAt) > r.timeout || state.total != total {
+	if state == nil {
+		// Check if adding a new stream would exceed the limit
+		if len(r.streams) >= r.maxConcurrent {
+			return nil, false, fmt.Errorf("itox: add frame: %w", ErrTooManyStreams)
+		}
+		state = &reassemblyState{createdAt: now, total: total, parts: map[uint16][]byte{}}
+		r.streams[streamID] = state
+	} else if now.Sub(state.createdAt) > r.timeout || state.total != total {
 		state = &reassemblyState{createdAt: now, total: total, parts: map[uint16][]byte{}}
 		r.streams[streamID] = state
 	}
@@ -114,4 +133,31 @@ func (r *reassembler) addFrame(frame []byte) ([]byte, bool, error) {
 	}
 	delete(r.streams, streamID)
 	return out, true, nil
+}
+
+func (r *reassembler) backgroundReaper() {
+	defer close(r.reapDone)
+	ticker := time.NewTicker(r.timeout / 2)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.reapCloseCh:
+			return
+		case <-ticker.C:
+			r.mu.Lock()
+			now := r.now()
+			for sid, st := range r.streams {
+				if now.Sub(st.createdAt) > r.timeout {
+					delete(r.streams, sid)
+				}
+			}
+			r.mu.Unlock()
+		}
+	}
+}
+
+func (r *reassembler) close() {
+	close(r.reapCloseCh)
+	<-r.reapDone
 }

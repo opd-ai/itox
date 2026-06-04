@@ -39,7 +39,7 @@ type ToxSession struct {
 	onRekey func()
 }
 
-func newToxSession(ctx context.Context, remoteAddr net.Addr, noise noiseSender, fragmentTimeout time.Duration, retryTimeout time.Duration, maxSendQueue int, logger *slog.Logger, onRekey func()) *ToxSession {
+func newToxSession(ctx context.Context, remoteAddr net.Addr, noise noiseSender, fragmentTimeout time.Duration, retryTimeout time.Duration, maxSendQueue int, maxConcurrentStreams int, logger *slog.Logger, onRekey func()) *ToxSession {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -52,7 +52,7 @@ func newToxSession(ctx context.Context, remoteAddr net.Addr, noise noiseSender, 
 		noise:        noise,
 		logger:       logger,
 		retryTimeout: retryTimeout,
-		reassembler:  newReassembler(fragmentTimeout),
+		reassembler:  newReassembler(fragmentTimeout, maxConcurrentStreams),
 		inbound:      make(chan i2np.Message, maxSendQueue),
 		sendQ:        make(chan i2np.Message, maxSendQueue),
 		closing:      make(chan struct{}),
@@ -102,6 +102,7 @@ func (s *ToxSession) Close() error {
 		close(s.sendQ)
 	}
 	<-s.closed
+	s.reassembler.close()
 	return nil
 }
 

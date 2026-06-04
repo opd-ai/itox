@@ -15,4 +15,6 @@ var (
 	ErrNotFriend          = errors.New("itox: peer is not a Tox friend")
 	ErrPeerNotRegistered  = errors.New("itox: peer has no PeerRegistry entry")
 	ErrFriendRemoved      = errors.New("itox: friend removed from Tox client")
+	ErrTooManyStreams     = errors.New("itox: too many concurrent streams")
+	ErrTooManySessions    = errors.New("itox: too many concurrent sessions")
 )

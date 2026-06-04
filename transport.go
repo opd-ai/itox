@@ -79,6 +79,9 @@ func newToxTransportWithDeps(cfg Config, noise transportNoise, acl *FriendACL, t
 	if cfg.MaxSendQueue <= 0 {
 		cfg.MaxSendQueue = defaultMaxSendQueue
 	}
+	if cfg.MaxConcurrentStreams <= 0 {
+		cfg.MaxConcurrentStreams = defaultMaxConcurrentStreams
+	}
 	if cfg.FriendSyncInterval <= 0 {
 		cfg.FriendSyncInterval = defaultFriendSyncInterval
 	}
@@ -181,6 +184,9 @@ func (t *ToxTransport) getSessionByKey(pub [32]byte) (i2ptransport.TransportSess
 		return nil, fmt.Errorf("itox: get session add peer: %w", err)
 	}
 	sess := t.newSession(addr, pub)
+	if sess == nil {
+		return nil, fmt.Errorf("itox: get session: %w", ErrTooManySessions)
+	}
 	if err := t.waitHandshake(addr); err != nil {
 		t.removeSession(pub)
 		_ = sess.Close()
@@ -265,6 +271,10 @@ func (t *ToxTransport) handleInboundPacket(packet *toxtransport.Packet, addr net
 	}
 
 	s := t.getOrCreateSession(addr, peer)
+	if s == nil {
+		// Session capacity exceeded; drop packet silently
+		return nil
+	}
 	if err := s.handleInboundPacket(packet); err != nil {
 		return err
 	}
@@ -282,7 +292,13 @@ func (t *ToxTransport) getOrCreateSession(addr net.Addr, peer [32]byte) *ToxSess
 	if s != nil {
 		return s
 	}
-	return t.newSession(addr, peer)
+	s = t.newSession(addr, peer)
+	if s == nil {
+		t.logger.Warn("itox: get or create session: unable to create session due to capacity limit",
+			slog.String("peer", hex.EncodeToString(peer[:8])),
+		)
+	}
+	return s
 }
 
 func (t *ToxTransport) newSession(addr net.Addr, peer [32]byte) *ToxSession {
@@ -291,7 +307,14 @@ func (t *ToxTransport) newSession(addr net.Addr, peer [32]byte) *ToxSession {
 	if existing := t.sessions[peer]; existing != nil {
 		return existing
 	}
-	s := newToxSession(t.cfg.Context, addr, t.noise, t.cfg.FragmentTimeout, t.cfg.RetryTimeout, t.cfg.MaxSendQueue, t.logger,
+	// Enforce MaxSessions limit on the sessions map itself, not just the acceptCh buffer
+	if len(t.sessions) >= t.cfg.MaxSessions {
+		t.logger.Warn("itox: new session: session map at capacity",
+			slog.Int("max_sessions", t.cfg.MaxSessions),
+		)
+		return nil
+	}
+	s := newToxSession(t.cfg.Context, addr, t.noise, t.cfg.FragmentTimeout, t.cfg.RetryTimeout, t.cfg.MaxSendQueue, t.cfg.MaxConcurrentStreams, t.logger,
 		func() { t.removeSession(peer) },
 	)
 	t.sessions[peer] = s
