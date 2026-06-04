@@ -46,10 +46,12 @@ type ToxTransport struct {
 	mu       sync.RWMutex
 	sessions map[[32]byte]*ToxSession
 
-	acceptCh chan net.Conn
-	closeCh  chan struct{}
-	closed   chan struct{}
-	local    ToxI2PAddr
+	acceptCh  chan net.Conn
+	closeCh   chan struct{}
+	closed    chan struct{}
+	closeOnce sync.Once
+	closeErr  error
+	local     ToxI2PAddr
 }
 
 var _ i2ptransport.Transport = (*ToxTransport)(nil)
@@ -65,6 +67,25 @@ func NewToxTransport(cfg Config, noise transportNoise) (*ToxTransport, error) {
 }
 
 func newToxTransportWithDeps(cfg Config, noise transportNoise, acl *FriendACL, tox friendStatus) (*ToxTransport, error) {
+	// Defensively populate defaults (mirrors Config.Validate without requiring Tox).
+	if cfg.Context == nil {
+		cfg.Context = context.Background()
+	}
+	if cfg.FragmentTimeout <= 0 {
+		cfg.FragmentTimeout = defaultFragmentTimeout
+	}
+	if cfg.RetryTimeout <= 0 {
+		cfg.RetryTimeout = defaultRetryTimeout
+	}
+	if cfg.MaxSessions <= 0 {
+		cfg.MaxSessions = defaultMaxSessions
+	}
+	if cfg.MaxSendQueue <= 0 {
+		cfg.MaxSendQueue = defaultMaxSendQueue
+	}
+	if cfg.Logger == nil {
+		cfg.Logger = slog.Default()
+	}
 	if acl == nil {
 		acl = NewFriendACL(cfg.Tox, cfg.Logger)
 	}
@@ -148,7 +169,10 @@ func (t *ToxTransport) GetSession(ri router_info.RouterInfo) (i2ptransport.Trans
 func (t *ToxTransport) waitHandshake(addr net.Addr) error {
 	ctx, cancel := context.WithTimeout(t.cfg.Context, t.cfg.RetryTimeout)
 	defer cancel()
-	probe := &toxtransport.Packet{PacketType: toxtransport.PacketFriendMessage, Data: []byte{}}
+	// Build a minimal valid framing probe (streamID=0 marks keepalive/probe;
+	// real stream IDs start at 1 so this is never confused with payload data).
+	probeFrames, _ := fragmentMessage(0, nil)
+	probe := &toxtransport.Packet{PacketType: toxtransport.PacketFriendMessage, Data: probeFrames[0]}
 	for {
 		err := t.noise.Send(probe, addr)
 		if err == nil {
@@ -186,23 +210,20 @@ func (t *ToxTransport) Addr() net.Addr {
 }
 
 func (t *ToxTransport) Close() error {
-	select {
-	case <-t.closed:
-		return nil
-	default:
-	}
-	close(t.closeCh)
-	t.mu.Lock()
-	for k, s := range t.sessions {
-		_ = s.Close()
-		delete(t.sessions, k)
-	}
-	t.mu.Unlock()
-	if err := t.noise.Close(); err != nil {
-		return fmt.Errorf("itox: close noise: %w", err)
-	}
-	close(t.closed)
-	return nil
+	t.closeOnce.Do(func() {
+		close(t.closeCh)
+		t.mu.Lock()
+		for k, s := range t.sessions {
+			_ = s.Close()
+			delete(t.sessions, k)
+		}
+		t.mu.Unlock()
+		if err := t.noise.Close(); err != nil {
+			t.closeErr = fmt.Errorf("itox: close noise: %w", err)
+		}
+		close(t.closed)
+	})
+	return t.closeErr
 }
 
 func (t *ToxTransport) handleInboundPacket(packet *toxtransport.Packet, addr net.Addr) error {

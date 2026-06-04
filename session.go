@@ -116,8 +116,8 @@ func (s *ToxSession) nextStreamID() uint16 {
 }
 
 func (s *ToxSession) sendLoop() {
-	defer close(s.closed)
-	defer close(s.inbound)
+	defer close(s.inbound) // closed second: safe after s.closed signals shutdown
+	defer close(s.closed)  // closed first: stops handleInboundPacket before inbound is closed
 	for msg := range s.sendQ {
 		if msg == nil {
 			continue
@@ -181,6 +181,9 @@ func (s *ToxSession) handleInboundPacket(packet *toxtransport.Packet) error {
 	}
 	if !complete {
 		return nil
+	}
+	if len(payload) == 0 {
+		return nil // discard keepalive/probe frames that carry no I2NP payload
 	}
 	msg := i2np.NewI2NPMessage(0)
 	if err := msg.UnmarshalBinary(payload); err != nil {
