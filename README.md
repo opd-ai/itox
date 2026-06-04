@@ -23,11 +23,16 @@
 
 ```go
 // Build itox transport
-itoxCfg := itox.DefaultConfig(toxClient, secretKey, localRI)
+itoxCfg := itox.DefaultConfig(toxClient, secretKey)
 itoxTransport, err := itox.NewToxTransport(itoxCfg, noiseTransport)
+if err != nil {
+    // handle initialization error
+}
 
 // Register a Tox friend's RouterInfo received out-of-band (e.g. via Tox chat)
-err = itoxTransport.Registry().Register(friendRouterInfo, friendToxPubKey)
+if err := itoxTransport.Registry().Register(friendRouterInfo, friendToxPubKey); err != nil {
+    // handle registration error
+}
 
 // Add to muxer alongside standard transports — order determines preference.
 // Place itox last so NTCP2/SSU2 are preferred for peers reachable via both.

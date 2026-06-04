@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/go-i2p/common/router_info"
 	"github.com/opd-ai/toxcore"
 )
 
@@ -20,7 +19,6 @@ const (
 type Config struct {
 	Tox             *toxcore.Tox
 	LocalSecretKey  [32]byte
-	LocalRouterInfo router_info.RouterInfo
 	FragmentTimeout time.Duration
 	RetryTimeout    time.Duration
 	MaxSessions     int
@@ -29,11 +27,10 @@ type Config struct {
 	Logger          *slog.Logger
 }
 
-func DefaultConfig(tox *toxcore.Tox, secretKey [32]byte, ri router_info.RouterInfo) Config {
+func DefaultConfig(tox *toxcore.Tox, secretKey [32]byte) Config {
 	return Config{
 		Tox:             tox,
 		LocalSecretKey:  secretKey,
-		LocalRouterInfo: ri,
 		FragmentTimeout: defaultFragmentTimeout,
 		RetryTimeout:    defaultRetryTimeout,
 		MaxSessions:     defaultMaxSessions,

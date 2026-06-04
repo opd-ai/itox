@@ -137,7 +137,7 @@ func TestTransportGetSessionAndCompatible(t *testing.T) {
 		pk[i] = byte(i + 1)
 	}
 
-	ri := mustRouterInfoWithToxPK(t, pk)
+	ri := mustRouterInfoForPeer(t, pk)
 	noise := &mockNoiseTransport{}
 	cfg := Config{Context: ctx, FragmentTimeout: 30 * time.Second, RetryTimeout: time.Second, MaxSendQueue: 8, MaxSessions: 4}
 	acl := newFriendACLForTests(&mockACL{allowed: pk}, nil)
@@ -151,12 +151,12 @@ func TestTransportGetSessionAndCompatible(t *testing.T) {
 	if tr.Compatible(ri) {
 		t.Fatal("expected non-compatible router info before registration")
 	}
-	
+
 	// Register the peer in the PeerRegistry
 	if err := tr.Registry().Register(ri, pk); err != nil {
 		t.Fatalf("Registry().Register() failed: %v", err)
 	}
-	
+
 	// Now it should be compatible
 	if !tr.Compatible(ri) {
 		t.Fatal("expected compatible router info after registration")
@@ -246,7 +246,7 @@ func TestTransportAcceptWithAuthorizedPeer(t *testing.T) {
 	frame[4] = 0
 	frame[5] = 1
 	copy(frame[6:], msgBytes)
-	
+
 	if err := tr.handleInboundPacket(&toxtransport.Packet{Data: frame}, ToxI2PAddr{PublicKey: pk}); err != nil {
 		t.Fatal(err)
 	}
@@ -261,11 +261,9 @@ func TestTransportAcceptWithAuthorizedPeer(t *testing.T) {
 	}
 }
 
-func mustRouterInfoWithToxPK(t *testing.T, pk [32]byte) router_info.RouterInfo {
+func mustRouterInfoForPeer(t *testing.T, peerKey [32]byte) router_info.RouterInfo {
 	t.Helper()
-	// Per spec, itox has no opinion about RouterInfo address fields.
-	// Just create a minimal RouterInfo for testing.
-	return makeTestRouterInfo(t, pk)
+	return makeTestRouterInfo(t, peerKey)
 }
 
 func TestToxConnImplementsNetConn(t *testing.T) {

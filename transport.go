@@ -85,7 +85,7 @@ func newToxTransportWithDeps(cfg Config, noise transportNoise, acl *FriendACL, t
 	if acl == nil {
 		acl = NewFriendACL(cfg.Tox, cfg.Logger)
 	}
-	
+
 	t := &ToxTransport{
 		cfg:          cfg,
 		logger:       cfg.Logger,
@@ -124,13 +124,12 @@ func (t *ToxTransport) Compatible(ri router_info.RouterInfo) bool {
 	return t.peerRegistry.IsKnown(ri)
 }
 
-// SetIdentity stores the local RouterInfo identity. Does not modify RouterInfo.
+// SetIdentity is a no-op required by the transport interface.
+// itox intentionally ignores RouterInfo fields.
 func (t *ToxTransport) SetIdentity(ri router_info.RouterInfo) error {
-	// Per spec: itox has no opinion about RouterInfo address fields.
-	// We just store it for potential future use but don't extract anything from it.
+	_ = ri
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	// Update local address if we can derive it from the secret key
 	t.local = deriveLocalAddr(t.cfg.LocalSecretKey)
 	return nil
 }
@@ -138,13 +137,13 @@ func (t *ToxTransport) SetIdentity(ri router_info.RouterInfo) error {
 // GetSession returns an existing or new ToxSession for the given RouterInfo.
 // Called by the muxer only after Compatible returned true.
 // Calls PeerRegistry.Resolve to get the Tox public key.
-// Blocks until Noise-IK handshake completes or Config.Context is cancelled.
+// Waits for Noise-IK handshake completion up to Config.RetryTimeout.
 func (t *ToxTransport) GetSession(ri router_info.RouterInfo) (i2ptransport.TransportSession, error) {
 	toxPubKey, err := t.peerRegistry.Resolve(ri)
 	if err != nil {
 		return nil, fmt.Errorf("itox: get session: %w", err)
 	}
-	
+
 	return t.getSessionByKey(toxPubKey)
 }
 
@@ -152,7 +151,7 @@ func (t *ToxTransport) getSessionByKey(pub [32]byte) (i2ptransport.TransportSess
 	if !t.acl.IsAuthorized(pub) {
 		return nil, fmt.Errorf("itox: get session acl: %w", ErrUnauthorizedPeer)
 	}
-	
+
 	friendID, err := t.tox.GetFriendByPublicKey(pub)
 	if err != nil {
 		return nil, fmt.Errorf("itox: get session lookup: %w", err)
@@ -210,11 +209,7 @@ func (t *ToxTransport) waitHandshake(addr net.Addr) error {
 	}
 }
 
-// Accept blocks waiting for an inbound Tox message.
-// Extracts sender Tox public key from Noise-IK identity.
-// Non-friends: close silently, log at slog.LevelDebug only, loop to next message.
-// Returns only for authorized friends.
-// The muxer's ensureAcceptLoop runs this in a persistent goroutine.
+// Accept blocks until the next inbound authorized connection handle is enqueued.
 func (t *ToxTransport) Accept() (net.Conn, error) {
 	select {
 	case conn := <-t.acceptCh:
@@ -233,7 +228,7 @@ func (t *ToxTransport) Addr() net.Addr {
 	return t.local
 }
 
-// Close shuts down all active ToxSessions and the background friend-sync goroutine.
+// Close shuts down all active ToxSessions and closes the noise transport.
 func (t *ToxTransport) Close() error {
 	t.closeOnce.Do(func() {
 		close(t.closeCh)
@@ -262,7 +257,7 @@ func (t *ToxTransport) handleInboundPacket(packet *toxtransport.Packet, addr net
 		}
 		return nil
 	}
-	
+
 	s := t.getOrCreateSession(addr, peer)
 	if err := s.handleInboundPacket(packet); err != nil {
 		return err

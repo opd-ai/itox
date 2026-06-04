@@ -12,7 +12,7 @@ import (
 )
 
 func TestConfigValidate(t *testing.T) {
-	cfg := DefaultConfig(new(toxcore.Tox), [32]byte{}, makeTestRouterInfo(t, [32]byte{}))
+	cfg := DefaultConfig(new(toxcore.Tox), [32]byte{})
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected valid config, got: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestTransportMethodsAndRejects(t *testing.T) {
 func TestConstructorWrappersAndSessionHelpers(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	cfg := DefaultConfig(new(toxcore.Tox), [32]byte{}, makeTestRouterInfo(t, [32]byte{}))
+	cfg := DefaultConfig(new(toxcore.Tox), [32]byte{})
 	cfg.Context = ctx
 	noise := &mockNoiseTransport{}
 	tr, err := NewToxTransport(cfg, noise)
@@ -106,29 +106,29 @@ func TestConstructorWrappersAndSessionHelpers(t *testing.T) {
 	if tr.Registry() == nil {
 		t.Error("Registry() returned nil")
 	}
-	
+
 	// Test Addr()
 	if tr.Addr() == nil {
 		t.Error("Addr() returned nil")
 	}
-	
+
 	// Test Name()
 	if tr.Name() != "tox" {
 		t.Errorf("Name() = %q, want %q", tr.Name(), "tox")
 	}
-	
+
 	// Test SetIdentity
 	ri := makeTestRouterInfo(t, [32]byte{99})
 	if err := tr.SetIdentity(ri); err != nil {
 		t.Errorf("SetIdentity() error = %v", err)
 	}
-	
+
 	// Test peerKeyFromAddr with different inputs
 	toxAddr := ToxI2PAddr{PublicKey: [32]byte{1, 2, 3}}
 	if pk, ok := peerKeyFromAddr(toxAddr); !ok || pk != toxAddr.PublicKey {
 		t.Error("peerKeyFromAddr(ToxI2PAddr) failed")
 	}
-	
+
 	if _, ok := peerKeyFromAddr(nil); ok {
 		t.Error("peerKeyFromAddr(nil) should return false")
 	}
@@ -147,17 +147,17 @@ func TestSessionSendQueueSize(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tr.Close()
-	
+
 	ri := makeTestRouterInfo(t, pk)
 	if err := tr.Registry().Register(ri, pk); err != nil {
 		t.Fatal(err)
 	}
-	
+
 	sess, err := tr.GetSession(ri)
 	if err != nil {
 		t.Fatal(err)
 	}
-	
+
 	// Should be 0 initially
 	if size := sess.SendQueueSize(); size != 0 {
 		t.Errorf("SendQueueSize() = %d, want 0", size)
@@ -177,12 +177,12 @@ func TestDialerAndListener(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tr.Close()
-	
+
 	ri := makeTestRouterInfo(t, pk)
 	if err := tr.Registry().Register(ri, pk); err != nil {
 		t.Fatal(err)
 	}
-	
+
 	// Test DialRouter (wraps GetSession)
 	sess, err := tr.DialRouter(ri)
 	if err != nil {
@@ -195,18 +195,17 @@ func TestDialerAndListener(t *testing.T) {
 
 func TestNewToxTransportValidation(t *testing.T) {
 	ctx := context.Background()
-	
+
 	// Test with nil noise transport
-	cfg := DefaultConfig(new(toxcore.Tox), [32]byte{1}, makeTestRouterInfo(t, [32]byte{}))
+	cfg := DefaultConfig(new(toxcore.Tox), [32]byte{1})
 	cfg.Context = ctx
 	if _, err := NewToxTransport(cfg, nil); err == nil {
 		t.Error("NewToxTransport with nil noise should return error")
 	}
-	
+
 	// Test with invalid config (nil Tox)
 	cfg2 := Config{
-		Tox: nil, // invalid
-		LocalRouterInfo: makeTestRouterInfo(t, [32]byte{}),
+		Tox:     nil, // invalid
 		Context: ctx,
 	}
 	if _, err := NewToxTransport(cfg2, &mockNoiseTransport{}); err == nil {
