@@ -138,6 +138,7 @@ func (s *ToxSession) nextStreamID() uint16 {
 }
 
 func (s *ToxSession) sendLoop() {
+	defer s.reassembler.close()
 	defer close(s.inbound) // closed second: safe after s.closed signals shutdown
 	defer close(s.closed)  // closed first: stops handleInboundPacket before inbound is closed
 	for {

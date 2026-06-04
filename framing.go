@@ -27,6 +27,7 @@ type reassembler struct {
 	streams        map[uint16]*reassemblyState
 	reapCloseCh    chan struct{}
 	reapDone       chan struct{}
+	closeOnce      sync.Once
 }
 
 func newReassembler(timeout time.Duration, maxConcurrent int) *reassembler {
@@ -162,7 +163,9 @@ func (r *reassembler) backgroundReaper() {
 }
 
 func (r *reassembler) close() {
-	close(r.reapCloseCh)
+	r.closeOnce.Do(func() {
+		close(r.reapCloseCh)
+	})
 	<-r.reapDone
 }
 

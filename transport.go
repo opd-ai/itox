@@ -278,11 +278,6 @@ func (t *ToxTransport) getOrCreateSession(addr net.Addr, peer [32]byte) *ToxSess
 		return s
 	}
 	s = t.newSession(addr, peer)
-	if s == nil {
-		t.logger.Warn("itox: get or create session: unable to create session due to capacity limit",
-			slog.String("peer", hex.EncodeToString(peer[:8])),
-		)
-	}
 	return s
 }
 
