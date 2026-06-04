@@ -165,3 +165,10 @@ func (r *reassembler) close() {
 	close(r.reapCloseCh)
 	<-r.reapDone
 }
+
+func (r *reassembler) isStreamActive(streamID uint16) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, exists := r.streams[streamID]
+	return exists
+}

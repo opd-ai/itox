@@ -56,6 +56,12 @@ func (c *Config) Validate() error {
 	if c.Tox == nil {
 		return fmt.Errorf("itox: validate config: tox is nil: %w", ErrInvalidConfig)
 	}
+	c.populateDefaults()
+	return nil
+}
+
+// populateDefaults fills in missing or zero-valued fields with sensible defaults.
+func (c *Config) populateDefaults() {
 	if c.Context == nil {
 		c.Context = context.Background()
 	}
@@ -80,5 +86,4 @@ func (c *Config) Validate() error {
 	if c.Logger == nil {
 		c.Logger = slog.Default()
 	}
-	return nil
 }

@@ -64,30 +64,7 @@ func NewToxTransport(cfg Config, noise transportNoise) (*ToxTransport, error) {
 
 func newToxTransportWithDeps(cfg Config, noise transportNoise, acl *FriendACL, tox friendStatus) (*ToxTransport, error) {
 	// Defensively populate defaults (mirrors Config.Validate without requiring Tox).
-	if cfg.Context == nil {
-		cfg.Context = context.Background()
-	}
-	if cfg.FragmentTimeout <= 0 {
-		cfg.FragmentTimeout = defaultFragmentTimeout
-	}
-	if cfg.RetryTimeout <= 0 {
-		cfg.RetryTimeout = defaultRetryTimeout
-	}
-	if cfg.MaxSessions <= 0 {
-		cfg.MaxSessions = defaultMaxSessions
-	}
-	if cfg.MaxSendQueue <= 0 {
-		cfg.MaxSendQueue = defaultMaxSendQueue
-	}
-	if cfg.MaxConcurrentStreams <= 0 {
-		cfg.MaxConcurrentStreams = defaultMaxConcurrentStreams
-	}
-	if cfg.FriendSyncInterval <= 0 {
-		cfg.FriendSyncInterval = defaultFriendSyncInterval
-	}
-	if cfg.Logger == nil {
-		cfg.Logger = slog.Default()
-	}
+	cfg.populateDefaults()
 	if acl == nil {
 		acl = NewFriendACL(cfg.Tox, cfg.Logger)
 	}
@@ -104,7 +81,7 @@ func newToxTransportWithDeps(cfg Config, noise transportNoise, acl *FriendACL, t
 		closeCh:      make(chan struct{}),
 		closed:       make(chan struct{}),
 	}
-	t.local = deriveLocalAddr(cfg.LocalSecretKey)
+	t.local = deriveLocalAddr(cfg.LocalSecretKey, cfg.Logger)
 	noise.RegisterHandler(toxtransport.PacketFriendMessage, t.handleInboundPacket)
 	
 	// Start friend sync background goroutine
@@ -139,7 +116,7 @@ func (t *ToxTransport) SetIdentity(ri router_info.RouterInfo) error {
 	_ = ri
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.local = deriveLocalAddr(t.cfg.LocalSecretKey)
+	t.local = deriveLocalAddr(t.cfg.LocalSecretKey, t.logger)
 	return nil
 }
 
@@ -201,11 +178,10 @@ func (t *ToxTransport) waitHandshake(addr net.Addr) error {
 	// Build a minimal valid framing probe (streamID=0 marks keepalive/probe;
 	// real stream IDs start at 1 so this is never confused with payload data).
 	// fragmentMessage(0, nil) cannot fail: empty payload produces a single 6-byte frame.
-	probeFrames, err := fragmentMessage(0, nil)
-	if err != nil {
-		return fmt.Errorf("itox: handshake wait: %w", err)
-	}
+	probeFrames, _ := fragmentMessage(0, nil)
 	probe := &toxtransport.Packet{PacketType: toxtransport.PacketFriendMessage, Data: probeFrames[0]}
+	// Use exponential backoff starting at 100ms to reduce traffic amplification
+	backoff := 100 * time.Millisecond
 	for {
 		err := t.noise.Send(probe, addr)
 		if err == nil {
@@ -220,7 +196,12 @@ func (t *ToxTransport) waitHandshake(addr net.Addr) error {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("itox: handshake wait: %w", ctx.Err())
-		case <-time.After(20 * time.Millisecond):
+		case <-time.After(backoff):
+			// Cap backoff at 500ms to avoid excessive delays
+			backoff *= 2
+			if backoff > 500*time.Millisecond {
+				backoff = 500 * time.Millisecond
+			}
 		}
 	}
 }
@@ -350,12 +331,17 @@ func peerKeyFromAddr(addr net.Addr) ([32]byte, bool) {
 	return out, true
 }
 
-func deriveLocalAddr(secret [32]byte) ToxI2PAddr {
+func deriveLocalAddr(secret [32]byte, logger *slog.Logger) ToxI2PAddr {
 	kp, err := toxcrypto.FromSecretKey(secret)
 	if err == nil {
 		return ToxI2PAddr{PublicKey: kp.Public}
 	}
 	// Best-effort fallback for malformed test keys.
+	if logger != nil {
+		logger.Warn("itox: derive local addr: secret key validation failed, falling back to raw secret",
+			slog.Any("error", err),
+		)
+	}
 	return ToxI2PAddr{PublicKey: secret}
 }
 

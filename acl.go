@@ -38,10 +38,10 @@ func (a *FriendACL) IsAuthorized(toxPubKey [32]byte) bool {
 		return false
 	}
 
-	// Avoid timing side-channel: always iterate the full friend list
-	// regardless of whether GetFriendByPublicKey succeeds.
+	// Avoid timing side-channel: always iterate the full friend list.
 	// This prevents attackers from using timing differences to determine
-	// whether a key is in the friend list.
+	// whether a key is in the friend list. We compare against all friends
+	// using constant-time comparison regardless of any early lookups.
 	friends := a.tox.GetFriends()
 	authorized := 0
 	for _, f := range friends {
