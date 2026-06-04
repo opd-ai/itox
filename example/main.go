@@ -442,11 +442,10 @@ func createNoiseTransport(ctx context.Context, toxSecretKey [32]byte, udpPort in
 
 	logger.Info("UDP transport created", slog.String("local_addr", udpTransport.LocalAddr().String()))
 
-	// Create protocol capabilities with all advanced security features explicitly enabled
+	// Create protocol capabilities and explicitly enable the desired security policy.
 	capabilities := toxtransport.DefaultProtocolCapabilities()
-	// Note: PolicyNoiseWithRatchet is already set by DefaultProtocolCapabilities()
-	// Enable legacy fallback for compatibility with peers that don't support advanced features
-	// (DefaultProtocolCapabilities disables this by default for security-by-default operation)
+	capabilities.SessionPolicy = toxtransport.PolicyNoiseWithRatchet
+	// Enable legacy fallback for compatibility with peers that don't support advanced features.
 	capabilities.EnableLegacyFallback = true
 	
 	// Wrap with NegotiatingTransport for version negotiation and advanced features
