@@ -65,7 +65,7 @@ func (a *FriendACL) logUnauthorized(key [32]byte) {
 		return
 	}
 	prefix := hex.EncodeToString(key[:8])
-	a.logger.LogAttrs(nil, slog.LevelWarn, "itox acl reject",
+	a.logger.LogAttrs(nil, slog.LevelDebug, "itox acl reject",
 		slog.String("event", "acl_reject"),
 		slog.String("tox_pubkey", prefix),
 		slog.Time("timestamp", a.now()),

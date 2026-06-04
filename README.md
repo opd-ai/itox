@@ -1,49 +1,48 @@
 # itox
 
-`github.com/opd-ai/itox` implements **I2P-over-Tox** transport sessions.
+`github.com/opd-ai/itox` implements **I2P-over-Tox** transport sessions — a supplemental friend-to-friend transport for go-i2p routers.
 
-- Transport name: `tox`
-- Router address option: `tox-pubkey` (base64, 32-byte Tox public key)
-- ACL source: local Tox friend list only
-- netDB publication: not performed by this package
+## What This Is
 
-## Friend-to-Friend Stealth Routing
+- ✅ A valid `lib/transport.Transport` that passes `var _ transport.Transport = (*ToxTransport)(nil)`
+- ✅ Registered in `TransportMuxer` via `transport.Mux(ntcp2, ssu2, itoxTransport)`
+- ✅ `Compatible(ri)` returns `true` only for RouterInfos registered in `PeerRegistry` whose mapped Tox key is a current friend
+- ✅ `Compatible(ri)` returns `false` for all standard I2P RouterInfos — the muxer falls through to NTCP2/SSU2 normally
+- ✅ Sessions exist only between operators who are mutual Tox friends
+- ✅ The Tox friend list is the sole ACL
 
-When `StealthMode` is enabled in the configuration, itox implements friend-to-friend stealth routing:
+## What This Is NOT
 
-1. **No netDB exposure**: Tox public keys are not published in RouterInfo addresses
-2. **Status exchange**: Friends exchange I2P availability announcements over encrypted Tox channels
-3. **Mutual confirmation**: I2P sessions are only established after both peers confirm availability
-4. **Hidden transport**: The alternate Tox transport remains invisible to the I2P network database
+- ❌ Not a replacement for NTCP2 or SSU2 — supplemental only
+- ❌ Not selected by the muxer for peers not registered as Tox friends
+- ❌ Does not add, read, or require any fields in RouterInfo
+- ❌ Not published to the netDB — no `StoreRouterInfo` calls, ever
+- ❌ No peer discovery — if you haven't registered the peer, it doesn't exist to this transport
 
-### Configuration
+## Muxer Integration Example
 
 ```go
-cfg := itox.DefaultConfig(tox, secretKey)
-cfg.StealthMode = true  // Enable friend-to-friend stealth routing
+// Build itox transport
+itoxCfg := itox.DefaultConfig(toxClient, secretKey, localRI)
+itoxTransport, err := itox.NewToxTransport(itoxCfg, noiseTransport)
 
-transport, err := itox.NewToxTransport(cfg, noiseTransport)
-if err != nil {
-    log.Fatal(err)
-}
+// Register a Tox friend's RouterInfo received out-of-band (e.g. via Tox chat)
+err = itoxTransport.Registry().Register(friendRouterInfo, friendToxPubKey)
 
-// Broadcast I2P availability to all Tox friends
-if err := transport.BroadcastI2PStatus(true); err != nil {
-    log.Printf("Failed to broadcast status: %v", err)
-}
+// Add to muxer alongside standard transports — order determines preference.
+// Place itox last so NTCP2/SSU2 are preferred for peers reachable via both.
+mux := transport.Mux(ntcp2Transport, ssu2Transport, itoxTransport)
+
+// Everything else is unchanged. The muxer calls Compatible() on each transport
+// for every GetSession attempt. For peers not in PeerRegistry, itox returns
+// false and the muxer uses NTCP2 or SSU2 normally. For registered Tox friends,
+// itox returns true and the muxer uses the Tox channel.
 ```
 
-### Stealth Mode Behavior
-
-- **Compatible()**: Returns true only if the peer has advertised I2P availability via status message
-- **GetSession()**: Rejects peers who haven't advertised I2P availability
-- **Status messages**: Automatically processed when received from Tox friends
-- **Backward compatibility**: When StealthMode is false, operates in traditional mode with RouterInfo
-
-### Security Model
+## Security Model
 
 - Friend-list ACL gate on every inbound and outbound session path
-- In stealth mode, additional I2P availability check required
 - Messages carried through toxcore Noise-IK channels only
-- Status messages use encrypted Tox channels with magic prefix (0xFFFEFD)
-- Status entries expire after 5 minutes without updates
+- Non-friends are silently rejected with debug-level logging only
+- No RouterInfo netDB publication performed by this package
+- RouterInfo shared out-of-band; PeerRegistry maps identity hash to Tox pubkey locally

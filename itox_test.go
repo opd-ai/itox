@@ -2,18 +2,14 @@ package itox
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"net"
-	"reflect"
 	"sync"
 	"testing"
 	"time"
-	"unsafe"
 
-	"github.com/go-i2p/common/router_address"
 	"github.com/go-i2p/common/router_info"
 	"github.com/go-i2p/go-i2p/lib/i2np"
 	"github.com/opd-ai/toxcore"
@@ -196,23 +192,9 @@ func TestTransportAcceptRejectsUnauthorized(t *testing.T) {
 
 func mustRouterInfoWithToxPK(t *testing.T, pk [32]byte) router_info.RouterInfo {
 	t.Helper()
-	addr, err := router_address.NewRouterAddress(1, time.Time{}, "tox", map[string]string{toxPubKeyOption: base64.StdEncoding.EncodeToString(pk[:])})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var ri router_info.RouterInfo
-	setUnexportedField(t, &ri, "addresses", []*router_address.RouterAddress{addr})
-	return ri
-}
-
-func setUnexportedField(t *testing.T, target any, field string, val any) {
-	t.Helper()
-	rv := reflect.ValueOf(target).Elem()
-	fv := rv.FieldByName(field)
-	if !fv.IsValid() {
-		t.Fatalf("missing field %s", field)
-	}
-	reflect.NewAt(fv.Type(), unsafe.Pointer(fv.UnsafeAddr())).Elem().Set(reflect.ValueOf(val))
+	// Per spec, itox has no opinion about RouterInfo address fields.
+	// Just create a minimal RouterInfo for testing.
+	return makeTestRouterInfo(t, pk)
 }
 
 func TestToxConnImplementsNetConn(t *testing.T) {
