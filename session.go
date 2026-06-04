@@ -19,6 +19,8 @@ type noiseSender interface {
 }
 
 type ToxSession struct {
+	ctx context.Context
+
 	remoteAddr net.Addr
 	noise      noiseSender
 	logger     *slog.Logger
@@ -37,11 +39,15 @@ type ToxSession struct {
 	onRekey func()
 }
 
-func newToxSession(remoteAddr net.Addr, noise noiseSender, fragmentTimeout time.Duration, retryTimeout time.Duration, maxSendQueue int, logger *slog.Logger, onRekey func()) *ToxSession {
+func newToxSession(ctx context.Context, remoteAddr net.Addr, noise noiseSender, fragmentTimeout time.Duration, retryTimeout time.Duration, maxSendQueue int, logger *slog.Logger, onRekey func()) *ToxSession {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	s := &ToxSession{
+		ctx:          ctx,
 		remoteAddr:   remoteAddr,
 		noise:        noise,
 		logger:       logger,
@@ -137,7 +143,7 @@ func (s *ToxSession) sendLoop() {
 
 func (s *ToxSession) sendWithRetry(frame []byte) error {
 	packet := &toxtransport.Packet{PacketType: toxtransport.PacketFriendMessage, Data: frame}
-	ctx, cancel := context.WithTimeout(context.Background(), s.retryTimeout)
+	ctx, cancel := context.WithTimeout(s.ctx, s.retryTimeout)
 	defer cancel()
 	backoff := 20 * time.Millisecond
 

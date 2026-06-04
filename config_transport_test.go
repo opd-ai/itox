@@ -172,7 +172,7 @@ func TestConstructorWrappersAndSessionHelpers(t *testing.T) {
 }
 
 func TestSessionQueueAndCloseErrors(t *testing.T) {
-	s := newToxSession(ToxI2PAddr{}, &mockNoiseTransport{}, 30*time.Second, 50*time.Millisecond, 1, nil, nil)
+	s := newToxSession(context.Background(), ToxI2PAddr{}, &mockNoiseTransport{}, 30*time.Second, 50*time.Millisecond, 1, nil, nil)
 	m1 := i2np.NewBaseI2NPMessage(1)
 	m1.SetData([]byte("x"))
 	m2 := i2np.NewBaseI2NPMessage(1)
@@ -196,7 +196,7 @@ func TestSessionQueueAndCloseErrors(t *testing.T) {
 }
 
 func TestSessionHandleInboundInvalid(t *testing.T) {
-	s := newToxSession(ToxI2PAddr{}, &mockNoiseTransport{}, 30*time.Second, 50*time.Millisecond, 2, nil, nil)
+	s := newToxSession(context.Background(), ToxI2PAddr{}, &mockNoiseTransport{}, 30*time.Second, 50*time.Millisecond, 2, nil, nil)
 	defer s.Close()
 	if err := s.handleInboundPacket(&toxtransport.Packet{Data: []byte{1}}); err == nil {
 		t.Fatal("expected invalid frame error")

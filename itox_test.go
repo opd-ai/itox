@@ -85,7 +85,7 @@ func (m *mockACL) GetFriends() map[uint32]*toxcore.Friend {
 
 func TestSessionRetriesOnIncompleteHandshake(t *testing.T) {
 	noise := &mockNoiseTransport{sendErrs: []error{toxtransport.ErrNoiseSessionIncomplete, toxtransport.ErrNoiseSessionIncomplete, nil}}
-	s := newToxSession(ToxI2PAddr{}, noise, 30*time.Second, time.Second, 8, nil, nil)
+	s := newToxSession(context.Background(), ToxI2PAddr{}, noise, 30*time.Second, time.Second, 8, nil, nil)
 	defer s.Close()
 
 	msg := i2np.NewBaseI2NPMessage(42)
@@ -101,7 +101,7 @@ func TestSessionRetriesOnIncompleteHandshake(t *testing.T) {
 
 func TestSessionInboundRoundTrip(t *testing.T) {
 	noise := &mockNoiseTransport{}
-	s := newToxSession(ToxI2PAddr{}, noise, 30*time.Second, time.Second, 8, nil, nil)
+	s := newToxSession(context.Background(), ToxI2PAddr{}, noise, 30*time.Second, time.Second, 8, nil, nil)
 	defer s.Close()
 
 	msg := i2np.NewBaseI2NPMessage(7)

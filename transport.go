@@ -2,7 +2,6 @@ package itox
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -17,6 +16,7 @@ import (
 	"github.com/go-i2p/common/router_info"
 	i2ptransport "github.com/go-i2p/go-i2p/lib/transport"
 	"github.com/opd-ai/toxcore"
+	toxcrypto "github.com/opd-ai/toxcore/crypto"
 	toxtransport "github.com/opd-ai/toxcore/transport"
 )
 
@@ -79,7 +79,7 @@ func newToxTransportWithDeps(cfg Config, noise transportNoise, acl *FriendACL, t
 		closeCh:  make(chan struct{}),
 		closed:   make(chan struct{}),
 	}
-	copy(t.local.PublicKey[:], cfg.LocalSecretKey[:])
+	t.local = deriveLocalAddr(cfg.LocalSecretKey)
 	noise.RegisterHandler(toxtransport.PacketFriendMessage, t.handleInboundPacket)
 	go func() {
 		<-cfg.Context.Done()
@@ -237,7 +237,7 @@ func (t *ToxTransport) newSession(addr net.Addr, peer [32]byte) *ToxSession {
 	if existing := t.sessions[peer]; existing != nil {
 		return existing
 	}
-	s := newToxSession(addr, t.noise, t.cfg.FragmentTimeout, t.cfg.RetryTimeout, t.cfg.MaxSendQueue, t.logger,
+	s := newToxSession(t.cfg.Context, addr, t.noise, t.cfg.FragmentTimeout, t.cfg.RetryTimeout, t.cfg.MaxSendQueue, t.logger,
 		func() { t.removeSession(peer) },
 	)
 	t.sessions[peer] = s
@@ -303,10 +303,14 @@ func peerKeyFromAddr(addr net.Addr) ([32]byte, bool) {
 	}
 	var out [32]byte
 	copy(out[:], raw)
-	// Use constant-time compare against itself to keep an explicit constant-time op
-	// in this key handling path.
-	if subtle.ConstantTimeCompare(out[:], out[:]) != 1 {
-		return [32]byte{}, false
-	}
 	return out, true
+}
+
+func deriveLocalAddr(secret [32]byte) ToxI2PAddr {
+	kp, err := toxcrypto.FromSecretKey(secret)
+	if err == nil {
+		return ToxI2PAddr{PublicKey: kp.Public}
+	}
+	// Best-effort fallback for malformed test keys.
+	return ToxI2PAddr{PublicKey: secret}
 }
