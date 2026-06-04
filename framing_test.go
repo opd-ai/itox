@@ -2,6 +2,7 @@ package itox
 
 import (
 	"bytes"
+	"sync"
 	"testing"
 	"time"
 )
@@ -47,6 +48,15 @@ func TestParseFrameValidation(t *testing.T) {
 func TestReassemblerExpiresStaleFragments(t *testing.T) {
 	r := newReassembler(10*time.Millisecond, 256)
 	defer r.close()
+	now := time.Now()
+	var nowMu sync.Mutex
+	r.mu.Lock()
+	r.now = func() time.Time {
+		nowMu.Lock()
+		defer nowMu.Unlock()
+		return now
+	}
+	r.mu.Unlock()
 
 	frames, err := fragmentMessage(9, bytes.Repeat([]byte{1}, MaxToxPayload))
 	if err != nil {
@@ -55,7 +65,9 @@ func TestReassemblerExpiresStaleFragments(t *testing.T) {
 	if _, _, err := r.addFrame(frames[0]); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(20 * time.Millisecond)
+	nowMu.Lock()
+	now = now.Add(20 * time.Millisecond)
+	nowMu.Unlock()
 	if _, complete, err := r.addFrame(frames[1]); err != nil {
 		t.Fatal(err)
 	} else if complete {
