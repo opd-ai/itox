@@ -1,0 +1,1 @@
+config_transport_test.go:41:9: Send passes lock by value: github.com/opd-ai/itox.rekeyNoise contains github.com/opd-ai/itox.mockNoiseTransport contains sync.Mutex
