@@ -39,9 +39,10 @@ type ToxTransport struct {
 	cfg    Config
 	logger *slog.Logger
 
-	acl   *FriendACL
-	noise transportNoise
-	tox   friendStatus
+	acl      *FriendACL
+	noise    transportNoise
+	tox      friendStatus
+	registry *StatusRegistry
 
 	mu       sync.RWMutex
 	sessions map[[32]byte]*ToxSession
@@ -89,12 +90,18 @@ func newToxTransportWithDeps(cfg Config, noise transportNoise, acl *FriendACL, t
 	if acl == nil {
 		acl = NewFriendACL(cfg.Tox, cfg.Logger)
 	}
+	// Create StatusRegistry if StealthMode is enabled and not provided
+	registry := cfg.StatusRegistry
+	if cfg.StealthMode && registry == nil {
+		registry = NewStatusRegistry(cfg.Logger)
+	}
 	t := &ToxTransport{
 		cfg:      cfg,
 		logger:   cfg.Logger,
 		acl:      acl,
 		noise:    noise,
 		tox:      tox,
+		registry: registry,
 		sessions: make(map[[32]byte]*ToxSession),
 		acceptCh: make(chan net.Conn, cfg.MaxSessions),
 		closeCh:  make(chan struct{}),
@@ -112,8 +119,15 @@ func newToxTransportWithDeps(cfg Config, noise transportNoise, acl *FriendACL, t
 func (t *ToxTransport) Name() string { return "tox" }
 
 func (t *ToxTransport) Compatible(ri router_info.RouterInfo) bool {
-	_, ok := extractToxPubKey(ri)
-	return ok
+	pub, ok := extractToxPubKey(ri)
+	if !ok {
+		return false
+	}
+	// In stealth mode, also check if peer has advertised I2P availability
+	if t.cfg.StealthMode && t.registry != nil {
+		return t.registry.GetStatus(pub)
+	}
+	return true
 }
 
 func (t *ToxTransport) SetIdentity(ri router_info.RouterInfo) error {
@@ -132,8 +146,24 @@ func (t *ToxTransport) GetSession(ri router_info.RouterInfo) (i2ptransport.Trans
 	if !ok {
 		return nil, fmt.Errorf("itox: get session: router not compatible")
 	}
+	return t.getSessionByKey(pub)
+}
+
+// GetSessionByToxPubKey creates or retrieves a session for a Tox friend by public key.
+// This method bypasses RouterInfo and is the primary path in stealth mode.
+func (t *ToxTransport) GetSessionByToxPubKey(pubKey [32]byte) (i2ptransport.TransportSession, error) {
+	return t.getSessionByKey(pubKey)
+}
+
+func (t *ToxTransport) getSessionByKey(pub [32]byte) (i2ptransport.TransportSession, error) {
 	if !t.acl.IsAuthorized(pub) {
 		return nil, fmt.Errorf("itox: get session acl: %w", ErrUnauthorizedPeer)
+	}
+	// In stealth mode, check if peer has advertised I2P availability
+	if t.cfg.StealthMode && t.registry != nil {
+		if !t.registry.GetStatus(pub) {
+			return nil, fmt.Errorf("itox: get session: %w", ErrPeerNotAdvertising)
+		}
 	}
 	friendID, err := t.tox.GetFriendByPublicKey(pub)
 	if err != nil {
@@ -231,6 +261,15 @@ func (t *ToxTransport) handleInboundPacket(packet *toxtransport.Packet, addr net
 	if !ok || !t.acl.IsAuthorized(peer) {
 		return nil
 	}
+	
+	// Check if this is a status message (magic prefix: statusMagicPrefix)
+	if len(packet.Data) > 3 && 
+	   packet.Data[0] == statusMagicByte1 && 
+	   packet.Data[1] == statusMagicByte2 && 
+	   packet.Data[2] == statusMagicByte3 {
+		return t.handleStatusMessage(peer, packet.Data[3:])
+	}
+	
 	s := t.getOrCreateSession(addr, peer)
 	if err := s.handleInboundPacket(packet); err != nil {
 		return err
@@ -272,6 +311,74 @@ func (t *ToxTransport) removeSession(peer [32]byte) {
 		_ = s.Close()
 		delete(t.sessions, peer)
 	}
+}
+
+// BroadcastI2PStatus sends an I2P availability announcement to all Tox friends.
+// This should be called when the transport starts and when I2P status changes.
+func (t *ToxTransport) BroadcastI2PStatus(available bool) error {
+	if t.tox == nil || t.cfg.Tox == nil {
+		return fmt.Errorf("itox: broadcast status: tox not available")
+	}
+	statusData, err := EncodeStatusMessage(available)
+	if err != nil {
+		return fmt.Errorf("itox: encode status message: %w", err)
+	}
+	
+	// Prefix status messages with magic marker to distinguish from I2NP data
+	statusPacket := append(statusMagicPrefix, statusData...)
+	
+	friends := t.cfg.Tox.GetFriends()
+	sent := 0
+	for friendID := range friends {
+		friendPubKey, err := t.tox.GetFriendPublicKey(friendID)
+		if err != nil {
+			continue
+		}
+		addr := ToxI2PAddr{PublicKey: friendPubKey}
+		packet := &toxtransport.Packet{
+			PacketType: toxtransport.PacketFriendMessage,
+			Data:       statusPacket,
+		}
+		if err := t.noise.Send(packet, addr); err != nil {
+			t.logger.Debug("failed to send i2p status to friend",
+				slog.Uint64("friend_id", uint64(friendID)),
+				slog.Any("error", err),
+			)
+			continue
+		}
+		sent++
+	}
+	
+	t.logger.Info("broadcast i2p status",
+		slog.Bool("available", available),
+		slog.Int("sent", sent),
+		slog.Int("total_friends", len(friends)),
+	)
+	return nil
+}
+
+// handleStatusMessage processes an incoming I2P status announcement from a friend.
+// This is called from handleInboundPacket when a status message is detected.
+func (t *ToxTransport) handleStatusMessage(peer [32]byte, data []byte) error {
+	if t.registry == nil {
+		return nil // Status messages not used in non-stealth mode
+	}
+	
+	msg, err := DecodeStatusMessage(data)
+	if err != nil {
+		t.logger.Debug("failed to decode status message",
+			slog.String("peer", formatPeerID(peer)),
+			slog.Any("error", err),
+		)
+		return err
+	}
+	
+	t.registry.SetStatus(peer, msg.Available)
+	t.logger.Info("received i2p status",
+		slog.String("peer", formatPeerID(peer)),
+		slog.Bool("available", msg.Available),
+	)
+	return nil
 }
 
 func extractToxPubKey(ri router_info.RouterInfo) ([32]byte, bool) {
