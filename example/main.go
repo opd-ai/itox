@@ -425,8 +425,8 @@ func exportRouterInfo(ri *router_info.RouterInfo, dataPath string, logger *slog.
 	return nil
 }
 
-// createNoiseTransport creates a real Noise transport using UDP
-func createNoiseTransport(ctx context.Context, toxSecretKey [32]byte, udpPort int, logger *slog.Logger) (*toxtransport.NoiseTransport, error) {
+// createNoiseTransport creates a NegotiatingTransport with advanced security features enabled using UDP
+func createNoiseTransport(ctx context.Context, toxSecretKey [32]byte, udpPort int, logger *slog.Logger) (*itox.NegotiatingTransportAdapter, error) {
 	if udpPort < 0 || udpPort > 65535 {
 		return nil, fmt.Errorf("invalid udp port: %d", udpPort)
 	}
@@ -442,15 +442,25 @@ func createNoiseTransport(ctx context.Context, toxSecretKey [32]byte, udpPort in
 
 	logger.Info("UDP transport created", slog.String("local_addr", udpTransport.LocalAddr().String()))
 
-	// Wrap with Noise protocol encryption
-	noiseTransport, err := toxtransport.NewNoiseTransport(udpTransport, toxSecretKey[:])
+	// Create protocol capabilities with all advanced security features explicitly enabled
+	capabilities := toxtransport.DefaultProtocolCapabilities()
+	// Ensure PolicyNoiseWithRatchet is explicitly set for maximum forward secrecy
+	capabilities.SessionPolicy = toxtransport.PolicyNoiseWithRatchet
+	// Enable legacy fallback for compatibility with peers that don't support advanced features
+	capabilities.EnableLegacyFallback = true
+	
+	// Wrap with NegotiatingTransport for version negotiation and advanced features
+	negotiatingTransport, err := toxtransport.NewNegotiatingTransport(udpTransport, capabilities, toxSecretKey[:])
 	if err != nil {
 		_ = udpTransport.Close()
-		return nil, fmt.Errorf("create noise transport: %w", err)
+		return nil, fmt.Errorf("create negotiating transport: %w", err)
 	}
 
-	logger.Info("Noise transport created", slog.String("protocol", "Noise-IK"))
-	return noiseTransport, nil
+	logger.Info("NegotiatingTransport created with advanced security features",
+		slog.String("protocol", "Noise-IK + Double Ratchet"),
+		slog.String("policy", capabilities.SessionPolicy.String()),
+	)
+	return itox.NewNegotiatingTransportAdapter(negotiatingTransport), nil
 }
 
 // registerFriend registers a friend's RouterInfo with the itox transport
