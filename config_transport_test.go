@@ -12,7 +12,8 @@ import (
 )
 
 func TestConfigValidate(t *testing.T) {
-	cfg := DefaultConfig(new(toxcore.Tox), [32]byte{})
+	ri := makeTestRouterInfo(t, [32]byte{1})
+	cfg := DefaultConfig(new(toxcore.Tox), [32]byte{}, ri)
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected valid config, got: %v", err)
 	}
@@ -93,7 +94,8 @@ func TestTransportMethodsAndRejects(t *testing.T) {
 func TestConstructorWrappersAndSessionHelpers(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	cfg := DefaultConfig(new(toxcore.Tox), [32]byte{})
+	ri := makeTestRouterInfo(t, [32]byte{1})
+	cfg := DefaultConfig(new(toxcore.Tox), [32]byte{}, ri)
 	cfg.Context = ctx
 	noise := &mockNoiseTransport{}
 	tr, err := NewToxTransport(cfg, noise)
@@ -118,8 +120,8 @@ func TestConstructorWrappersAndSessionHelpers(t *testing.T) {
 	}
 
 	// Test SetIdentity
-	ri := makeTestRouterInfo(t, [32]byte{99})
-	if err := tr.SetIdentity(ri); err != nil {
+	ri2 := makeTestRouterInfo(t, [32]byte{99})
+	if err := tr.SetIdentity(ri2); err != nil {
 		t.Errorf("SetIdentity() error = %v", err)
 	}
 
@@ -197,7 +199,8 @@ func TestNewToxTransportValidation(t *testing.T) {
 	ctx := context.Background()
 
 	// Test with nil noise transport
-	cfg := DefaultConfig(new(toxcore.Tox), [32]byte{1})
+	ri := makeTestRouterInfo(t, [32]byte{1})
+	cfg := DefaultConfig(new(toxcore.Tox), [32]byte{1}, ri)
 	cfg.Context = ctx
 	if _, err := NewToxTransport(cfg, nil); err == nil {
 		t.Error("NewToxTransport with nil noise should return error")
