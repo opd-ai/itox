@@ -15,7 +15,7 @@ type NegotiatingTransportAdapter struct {
 
 // NewNegotiatingTransportAdapter creates a new adapter for a NegotiatingTransport.
 func NewNegotiatingTransportAdapter(nt *toxtransport.NegotiatingTransport) *NegotiatingTransportAdapter {
-	return &NegotiatingTransportAdapter{nt}
+	return &NegotiatingTransportAdapter{NegotiatingTransport: nt}
 }
 
 // AddPeer adapts AddNoiseKeyForPeer to match the AddPeer interface used by itox.
