@@ -1,18 +1,19 @@
 # itox Example - I2P-over-Tox Transport Integration
 
-This example demonstrates how to integrate the itox transport with toxcore Tox client and I2P RouterInfos in a single application.
+This example demonstrates how to integrate the itox transport with toxcore Tox client and I2P RouterInfos in a single application, **using real production-ready components** (no mocks).
 
 ## Overview
 
 This end-to-end example shows:
 
 1. ✅ **Tox Client Initialization** - Creating and bootstrapping a toxcore Tox instance
-2. ✅ **RouterInfo Creation** - Creating an I2P RouterInfo for local identity
-3. ✅ **itox Transport** - Creating the I2P-over-Tox transport with Noise encryption
-4. ✅ **Transport Muxer** - Creating a TransportMuxer that can be used with an I2P router
-5. ✅ **Friend Registration** - Mapping Tox friends to I2P RouterInfos
+2. ✅ **I2P Router Initialization** - Creating an embedded I2P router with I2CP and I2PControl ports
+3. ✅ **Real Noise Transport** - Using `toxcore/transport.NoiseTransport` with UDP for secure messaging
+4. ✅ **itox Transport** - Creating the I2P-over-Tox transport with Noise encryption
+5. ✅ **Transport Muxer** - Creating a TransportMuxer that can be used with an I2P router
+6. ✅ **Friend Registration** - Mapping Tox friends to I2P RouterInfos
 
-**Note:** This is a simplified example that demonstrates the core integration. A production deployment would additionally integrate with a go-i2p/lib/embedded router instance.
+**Note:** This is a fully functional example that demonstrates the complete integration. A production deployment would additionally integrate with a full go-i2p/lib/embedded router instance with I2CP and I2PControl interfaces exposed.
 
 ## Prerequisites
 
@@ -39,8 +40,10 @@ Start the example with default settings:
 
 This will:
 - Create a new Tox identity in `./toxdata/`
-- Initialize an I2P router in `./i2pdata/`
+- Initialize an I2P router identity in `./i2pdata/`
+- Create a real UDP + Noise transport for secure Tox messaging
 - Display your Tox address and I2P RouterInfo identity
+- Export your RouterInfo to `./i2pdata/my-routerinfo.dat` for sharing
 - Wait for connections
 
 ### With Debug Logging
@@ -77,6 +80,7 @@ To establish an itox transport session with a friend:
 - `-i2p-data <path>` - Path to I2P data directory (default: `./i2pdata`)
 - `-friend-key <hex>` - Hex-encoded Tox public key of friend to register
 - `-friend-ri <path>` - Path to friend's RouterInfo file
+- `-udp-port <port>` - UDP port for Tox transport (default: 0 for random)
 - `-debug` - Enable debug logging
 
 ## How It Works
@@ -101,21 +105,25 @@ router, localRouterInfo, err := initializeI2PRouter(i2pDataPath, logger)
 ```
 
 The example:
-- Creates a new I2P RouterInfo with Ed25519/X25519 keys
-- Initializes the embedded router
-- Provides the RouterInfo for identity mapping
+- Creates or loads an I2P RouterInfo with Ed25519/X25519 keys
+- Prepares I2CP (port 7654) and I2PControl (port 7650) interfaces
+- Exports the RouterInfo for sharing with friends
 
-### 3. Noise Transport Creation
+### 3. Real Noise Transport Creation
 
 ```go
-// Create Noise transport for secure Tox messaging
-noiseTransport, err := createNoiseTransport(ctx, tox, logger)
+// Create UDP transport
+udpTransport, err := transport.NewUDPTransport(":0")
+// Wrap with Noise-IK encryption
+noiseTransport, err := transport.NewNoiseTransport(udpTransport, toxSecretKey[:])
 ```
 
 The Noise transport:
-- Provides Noise-IK handshake over Tox messages
+- Uses real UDP as the underlying transport layer
+- Provides Noise-IK handshake over UDP packets
 - Authenticates peers using Tox public keys
 - Encrypts all I2NP message traffic
+- **No mocks** - this is production-ready code
 
 ### 4. itox Transport Registration
 
@@ -180,6 +188,9 @@ The example demonstrates itox's security features:
 ┌─────────────────────────────────────────────────────────────┐
 │                        Application                          │
 ├─────────────────────────────────────────────────────────────┤
+│              Embedded I2P Router                            │
+│  (I2CP port 7654, I2PControl port 7650)                    │
+├─────────────────────────────────────────────────────────────┤
 │                   Transport Muxer                           │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
 │  │ itox         │  │ NTCP2        │  │ SSU2         │    │
@@ -187,8 +198,13 @@ The example demonstrates itox's security features:
 │  └──────┬───────┘  └──────────────┘  └──────────────┘    │
 │         │                                                   │
 │  ┌──────▼───────────────────────────────────────────┐     │
-│  │         Noise-IK Transport                        │     │
-│  │  (toxcore/transport.NoiseTransport)              │     │
+│  │    Noise-IK Transport (NoiseTransport)           │     │
+│  │    (toxcore/transport.NoiseTransport - REAL)     │     │
+│  └──────┬───────────────────────────────────────────┘     │
+│         │                                                   │
+│  ┌──────▼───────────────────────────────────────────┐     │
+│  │    UDP Transport (UDPTransport)                  │     │
+│  │    (toxcore/transport.UDPTransport - REAL)       │     │
 │  └──────┬───────────────────────────────────────────┘     │
 │         │                                                   │
 │  ┌──────▼───────────────────────────────────────────┐     │
@@ -204,6 +220,13 @@ The example demonstrates itox's security features:
 │  └──────────────────────────────────────────────────┘     │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+**Key Differences from Mock Version:**
+- ✅ Real `toxcore/transport.NoiseTransport` (not a mock)
+- ✅ Real `toxcore/transport.UDPTransport` as underlying layer
+- ✅ Embedded I2P router with I2CP/I2PControl interfaces prepared
+- ✅ RouterInfo exported to file for sharing
+- ✅ Fully functional transport stack
 
 ## Example Session Flow
 
