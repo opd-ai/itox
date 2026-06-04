@@ -79,6 +79,9 @@ func newToxTransportWithDeps(cfg Config, noise transportNoise, acl *FriendACL, t
 	if cfg.MaxSendQueue <= 0 {
 		cfg.MaxSendQueue = defaultMaxSendQueue
 	}
+	if cfg.FriendSyncInterval <= 0 {
+		cfg.FriendSyncInterval = defaultFriendSyncInterval
+	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
@@ -100,6 +103,10 @@ func newToxTransportWithDeps(cfg Config, noise transportNoise, acl *FriendACL, t
 	}
 	t.local = deriveLocalAddr(cfg.LocalSecretKey)
 	noise.RegisterHandler(toxtransport.PacketFriendMessage, t.handleInboundPacket)
+	
+	// Start friend sync background goroutine
+	go t.friendSyncLoop()
+	
 	go func() {
 		<-cfg.Context.Done()
 		_ = t.Close()
@@ -323,4 +330,42 @@ func deriveLocalAddr(secret [32]byte) ToxI2PAddr {
 	}
 	// Best-effort fallback for malformed test keys.
 	return ToxI2PAddr{PublicKey: secret}
+}
+
+// friendSyncLoop polls the Tox friend list every FriendSyncInterval and closes
+// any ToxSession whose peer is no longer a friend.
+func (t *ToxTransport) friendSyncLoop() {
+	ticker := time.NewTicker(t.cfg.FriendSyncInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			t.checkFriendStatus()
+		case <-t.closeCh:
+			return
+		case <-t.cfg.Context.Done():
+			return
+		}
+	}
+}
+
+// checkFriendStatus checks all active sessions and closes any whose peer
+// is no longer authorized.
+func (t *ToxTransport) checkFriendStatus() {
+	t.mu.RLock()
+	var toClose [][32]byte
+	for peer := range t.sessions {
+		if !t.acl.IsAuthorized(peer) {
+			toClose = append(toClose, peer)
+		}
+	}
+	t.mu.RUnlock()
+
+	for _, peer := range toClose {
+		t.logger.Debug("itox: closing session for removed friend",
+			slog.String("peer", hex.EncodeToString(peer[:8])),
+		)
+		t.removeSession(peer)
+	}
 }

@@ -23,7 +23,7 @@
 
 ```go
 // Build itox transport
-itoxCfg := itox.DefaultConfig(toxClient, secretKey)
+itoxCfg := itox.DefaultConfig(toxClient, secretKey, localRI)
 itoxTransport, err := itox.NewToxTransport(itoxCfg, noiseTransport)
 if err != nil {
     // handle initialization error
