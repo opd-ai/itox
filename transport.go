@@ -107,8 +107,7 @@ func newToxTransportWithDeps(cfg Config, noise transportNoise, acl *FriendACL, t
 	return t, nil
 }
 
-// Name returns "tox". Appears in TransportMuxer.Name() output as
-// "Muxed Transport: NTCP2, SSU2, tox".
+// Name returns the transport name.
 func (t *ToxTransport) Name() string { return "tox" }
 
 // Registry returns the PeerRegistry for registering friend RouterInfos.
@@ -117,7 +116,7 @@ func (t *ToxTransport) Registry() *PeerRegistry {
 }
 
 // Compatible returns true if and only if PeerRegistry.IsKnown(ri) is true.
-// For all standard I2P RouterInfos this returns false, so the muxer
+// For RouterInfos not explicitly registered in PeerRegistry this returns false, so the muxer
 // falls through to NTCP2/SSU2 without any involvement from this transport.
 // Must be fast (read lock on PeerRegistry only) and side-effect free.
 func (t *ToxTransport) Compatible(ri router_info.RouterInfo) bool {
@@ -125,7 +124,7 @@ func (t *ToxTransport) Compatible(ri router_info.RouterInfo) bool {
 }
 
 // SetIdentity is a no-op required by the transport interface.
-// itox intentionally ignores RouterInfo fields.
+// itox derives its local address from Config.LocalSecretKey instead of RouterInfo.
 func (t *ToxTransport) SetIdentity(ri router_info.RouterInfo) error {
 	_ = ri
 	t.mu.Lock()

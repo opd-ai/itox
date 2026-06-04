@@ -4,6 +4,7 @@ go 1.26.3
 
 require (
 	github.com/go-i2p/common v0.1.55
+	github.com/go-i2p/crypto v0.1.55
 	github.com/go-i2p/go-i2p v0.1.56-0.20260602134808-cdc3c543349d
 	github.com/opd-ai/toxcore v1.4.0-qtox-preview.0.20260604033301-2a1fd5781021
 )
@@ -15,7 +16,6 @@ require (
 	github.com/cretz/bine v0.2.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
-	github.com/go-i2p/crypto v0.1.55 // indirect
 	github.com/go-i2p/elgamal v0.1.55 // indirect
 	github.com/go-i2p/go-noise v0.1.56-0.20260601234720-e972a89ebced // indirect
 	github.com/go-i2p/i2pkeys v0.33.92 // indirect

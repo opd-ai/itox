@@ -114,6 +114,8 @@ func (r *PeerRegistry) KnownPeers() [][32]byte {
 
 // extractRouterHash extracts the RouterInfo identity hash as a [32]byte.
 func extractRouterHash(ri router_info.RouterInfo) ([32]byte, error) {
+	// Minimal validation: rely on IdentHash() and reject all-zero hashes to avoid
+	// silently collapsing invalid/uninitialized RouterInfos to the same key.
 	hash, err := ri.IdentHash()
 	if err != nil {
 		return [32]byte{}, ErrInvalidRouterInfo
