@@ -125,7 +125,7 @@ func TestStealthMode_StatusMessageHandling(t *testing.T) {
 	}
 	
 	// Add magic prefix
-	statusPacket := append([]byte{0xFF, 0xFE, 0xFD}, statusData...)
+	statusPacket := append(statusMagicPrefix, statusData...)
 	
 	packet := &toxtransport.Packet{
 		PacketType: toxtransport.PacketFriendMessage,
@@ -163,10 +163,18 @@ func TestStealthMode_BroadcastStatus(t *testing.T) {
 	}
 	
 	// Verify magic prefix would be added
-	statusPacket := append([]byte{0xFF, 0xFE, 0xFD}, statusData...)
-	if len(statusPacket) < 3 || statusPacket[0] != 0xFF || statusPacket[1] != 0xFE || statusPacket[2] != 0xFD {
+	statusPacket := append(statusMagicPrefix, statusData...)
+	if !hasStatusMagicPrefix(statusPacket) {
 		t.Error("expected status message to have magic prefix")
 	}
+}
+
+// hasStatusMagicPrefix checks if data starts with the status magic prefix.
+func hasStatusMagicPrefix(data []byte) bool {
+	return len(data) >= 3 && 
+	       data[0] == statusMagicByte1 && 
+	       data[1] == statusMagicByte2 && 
+	       data[2] == statusMagicByte3
 }
 
 // TestNonStealthMode_BackwardCompatibility verifies that without stealth mode,

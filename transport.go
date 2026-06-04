@@ -262,8 +262,11 @@ func (t *ToxTransport) handleInboundPacket(packet *toxtransport.Packet, addr net
 		return nil
 	}
 	
-	// Check if this is a status message (magic prefix: 0xFF 0xFE 0xFD)
-	if len(packet.Data) > 3 && packet.Data[0] == 0xFF && packet.Data[1] == 0xFE && packet.Data[2] == 0xFD {
+	// Check if this is a status message (magic prefix: statusMagicPrefix)
+	if len(packet.Data) > 3 && 
+	   packet.Data[0] == statusMagicByte1 && 
+	   packet.Data[1] == statusMagicByte2 && 
+	   packet.Data[2] == statusMagicByte3 {
 		return t.handleStatusMessage(peer, packet.Data[3:])
 	}
 	
@@ -321,8 +324,8 @@ func (t *ToxTransport) BroadcastI2PStatus(available bool) error {
 		return fmt.Errorf("itox: encode status message: %w", err)
 	}
 	
-	// Prefix status messages with a magic marker to distinguish from I2NP data
-	statusPacket := append([]byte{0xFF, 0xFE, 0xFD}, statusData...)
+	// Prefix status messages with magic marker to distinguish from I2NP data
+	statusPacket := append(statusMagicPrefix, statusData...)
 	
 	friends := t.cfg.Tox.GetFriends()
 	sent := 0
@@ -354,7 +357,7 @@ func (t *ToxTransport) BroadcastI2PStatus(available bool) error {
 	return nil
 }
 
-// HandleStatusMessage processes an incoming I2P status announcement from a friend.
+// handleStatusMessage processes an incoming I2P status announcement from a friend.
 // This is called from handleInboundPacket when a status message is detected.
 func (t *ToxTransport) handleStatusMessage(peer [32]byte, data []byte) error {
 	if t.registry == nil {
@@ -364,7 +367,7 @@ func (t *ToxTransport) handleStatusMessage(peer [32]byte, data []byte) error {
 	msg, err := DecodeStatusMessage(data)
 	if err != nil {
 		t.logger.Debug("failed to decode status message",
-			slog.String("peer", string(peer[:8])),
+			slog.String("peer", formatPeerID(peer)),
 			slog.Any("error", err),
 		)
 		return err
@@ -372,7 +375,7 @@ func (t *ToxTransport) handleStatusMessage(peer [32]byte, data []byte) error {
 	
 	t.registry.SetStatus(peer, msg.Available)
 	t.logger.Info("received i2p status",
-		slog.String("peer", string(peer[:8])),
+		slog.String("peer", formatPeerID(peer)),
 		slog.Bool("available", msg.Available),
 	)
 	return nil

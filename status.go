@@ -1,11 +1,21 @@
 package itox
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"sync"
 	"time"
 )
+
+const (
+	// statusMagicPrefix is prepended to status messages to distinguish them from I2NP data
+	statusMagicByte1 = 0xFF
+	statusMagicByte2 = 0xFE
+	statusMagicByte3 = 0xFD
+)
+
+var statusMagicPrefix = []byte{statusMagicByte1, statusMagicByte2, statusMagicByte3}
 
 // I2PStatus represents the I2P availability status of a Tox friend.
 type I2PStatus struct {
@@ -56,7 +66,7 @@ func (r *StatusRegistry) SetStatus(pubKey [32]byte, available bool) {
 		Timestamp: r.now(),
 	}
 	r.logger.Debug("i2p status updated",
-		slog.String("peer", string(pubKey[:8])),
+		slog.String("peer", formatPeerID(pubKey)),
 		slog.Bool("available", available),
 	)
 }
@@ -83,7 +93,7 @@ func (r *StatusRegistry) ClearStatus(pubKey [32]byte) {
 	defer r.mu.Unlock()
 	delete(r.statuses, pubKey)
 	r.logger.Debug("i2p status cleared",
-		slog.String("peer", string(pubKey[:8])),
+		slog.String("peer", formatPeerID(pubKey)),
 	)
 }
 
@@ -134,4 +144,9 @@ func DecodeStatusMessage(data []byte) (*StatusMessage, error) {
 		return nil, ErrUnsupportedStatusVersion
 	}
 	return &msg, nil
+}
+
+// formatPeerID formats a peer public key for logging (first 8 bytes as hex).
+func formatPeerID(pubKey [32]byte) string {
+	return hex.EncodeToString(pubKey[:8])
 }
