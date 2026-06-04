@@ -12,29 +12,19 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
-	github.com/beevik/ntp v1.5.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/cretz/bine v0.2.0 // indirect
-	github.com/dchest/siphash v1.2.3 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/go-i2p/elgamal v0.1.55 // indirect
-	github.com/go-i2p/go-nat-listener v0.0.0-20260402222111-bfda0025cb1b // indirect
 	github.com/go-i2p/go-noise v0.1.56-0.20260601234720-e972a89ebced // indirect
-	github.com/go-i2p/go-unzip v0.0.0-20260417162122-21146ed7aca8 // indirect
 	github.com/go-i2p/i2pkeys v0.33.92 // indirect
 	github.com/go-i2p/logger v0.1.55 // indirect
 	github.com/go-i2p/noise v1.1.1-0.20260327201800-8e41bb3d9f1e // indirect
 	github.com/go-i2p/onramp v0.33.92 // indirect
-	github.com/go-i2p/path v0.0.0-20260524090922-541ac8d0307c // indirect
-	github.com/go-i2p/pool v0.0.0-20260524090918-318e509454da // indirect
-	github.com/go-i2p/red25519 v0.0.0-20260302212615-1093a31f680d // indirect
 	github.com/go-i2p/sam3 v0.33.92 // indirect
-	github.com/go-i2p/su3 v0.1.55 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
-	github.com/huin/goupnp v1.3.0 // indirect
-	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/reedsolomon v1.13.3 // indirect
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
@@ -63,7 +53,6 @@ require (
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
-	golang.org/x/time v0.15.0 // indirect
 )
 
 replace github.com/opd-ai/itox => ../
