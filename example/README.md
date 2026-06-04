@@ -1,22 +1,23 @@
 # itox Example - I2P-over-Tox Transport Integration
 
-This example demonstrates how to integrate the itox transport with a go-i2p embedded router and toxcore Tox client in a single application.
+This example demonstrates how to integrate the itox transport with toxcore Tox client and I2P RouterInfos in a single application.
 
 ## Overview
 
 This end-to-end example shows:
 
 1. ✅ **Tox Client Initialization** - Creating and bootstrapping a toxcore Tox instance
-2. ✅ **I2P Router Setup** - Initializing a go-i2p embedded router
-3. ✅ **Noise Transport** - Creating the Noise-IK transport layer for Tox
-4. ✅ **itox Transport** - Registering the I2P-over-Tox transport
-5. ✅ **Transport Muxer** - Combining transports in a TransportMuxer
-6. ✅ **Friend Registration** - Mapping Tox friends to I2P RouterInfos
+2. ✅ **RouterInfo Creation** - Creating an I2P RouterInfo for local identity
+3. ✅ **itox Transport** - Creating the I2P-over-Tox transport with Noise encryption
+4. ✅ **Transport Muxer** - Creating a TransportMuxer that can be used with an I2P router
+5. ✅ **Friend Registration** - Mapping Tox friends to I2P RouterInfos
+
+**Note:** This is a simplified example that demonstrates the core integration. A production deployment would additionally integrate with a go-i2p/lib/embedded router instance.
 
 ## Prerequisites
 
 - Go 1.26 or later
-- C compiler (for toxcore CGO bindings)
+- toxcore C library (for CGO bindings)
 - Linux/macOS (Windows may require additional setup for toxcore)
 
 ## Building
