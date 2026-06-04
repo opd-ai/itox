@@ -7,13 +7,13 @@ This example demonstrates how to integrate the itox transport with toxcore Tox c
 This end-to-end example shows:
 
 1. ✅ **Tox Client Initialization** - Creating and bootstrapping a toxcore Tox instance
-2. ✅ **I2P Router Initialization** - Creating an embedded I2P router with I2CP and I2PControl ports
+2. ✅ **I2P Router Initialization** - Creating a minimal embedded router placeholder and local RouterInfo
 3. ✅ **Real Noise Transport** - Using `toxcore/transport.NoiseTransport` with UDP for secure messaging
 4. ✅ **itox Transport** - Creating the I2P-over-Tox transport with Noise encryption
 5. ✅ **Transport Muxer** - Creating a TransportMuxer that can be used with an I2P router
 6. ✅ **Friend Registration** - Mapping Tox friends to I2P RouterInfos
 
-**Note:** This is a fully functional example that demonstrates the complete integration. A production deployment would additionally integrate with a full go-i2p/lib/embedded router instance with I2CP and I2PControl interfaces exposed.
+**Note:** This example demonstrates the transport integration and RouterInfo flow. The sample router is a minimal placeholder, and I2CP/I2PControl interfaces are not yet implemented here.
 
 ## Prerequisites
 
@@ -106,7 +106,7 @@ router, localRouterInfo, err := initializeI2PRouter(i2pDataPath, logger)
 
 The example:
 - Creates or loads an I2P RouterInfo with Ed25519/X25519 keys
-- Prepares I2CP (port 7654) and I2PControl (port 7650) interfaces
+- Uses a minimal embedded router placeholder rather than a full router service
 - Exports the RouterInfo for sharing with friends
 
 ### 3. Real Noise Transport Creation
