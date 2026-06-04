@@ -27,6 +27,11 @@ type Config struct {
 	MaxSendQueue    int
 	Context         context.Context
 	Logger          *slog.Logger
+	// StealthMode enables friend-to-friend status exchange and disables
+	// RouterInfo-based peer discovery. When true, peers must advertise
+	// I2P availability via Tox status messages to establish connections.
+	StealthMode    bool
+	StatusRegistry *StatusRegistry
 }
 
 func DefaultConfig(tox *toxcore.Tox, secretKey [32]byte) Config {
@@ -39,6 +44,8 @@ func DefaultConfig(tox *toxcore.Tox, secretKey [32]byte) Config {
 		MaxSendQueue:    defaultMaxSendQueue,
 		Context:         context.Background(),
 		Logger:          slog.Default(),
+		StealthMode:     false,
+		StatusRegistry:  nil, // Created automatically if StealthMode is enabled
 	}
 }
 
