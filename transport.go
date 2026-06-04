@@ -200,7 +200,11 @@ func (t *ToxTransport) waitHandshake(addr net.Addr) error {
 	defer cancel()
 	// Build a minimal valid framing probe (streamID=0 marks keepalive/probe;
 	// real stream IDs start at 1 so this is never confused with payload data).
-	probeFrames, _ := fragmentMessage(0, nil)
+	// fragmentMessage(0, nil) cannot fail: empty payload produces a single 6-byte frame.
+	probeFrames, err := fragmentMessage(0, nil)
+	if err != nil {
+		return fmt.Errorf("itox: handshake wait: %w", err)
+	}
 	probe := &toxtransport.Packet{PacketType: toxtransport.PacketFriendMessage, Data: probeFrames[0]}
 	for {
 		err := t.noise.Send(probe, addr)

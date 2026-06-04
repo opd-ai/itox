@@ -112,9 +112,13 @@ func (r *reassembler) addFrame(frame []byte) ([]byte, bool, error) {
 		}
 		state = &reassemblyState{createdAt: now, total: total, parts: map[uint16][]byte{}}
 		r.streams[streamID] = state
-	} else if now.Sub(state.createdAt) > r.timeout || state.total != total {
+	} else if now.Sub(state.createdAt) > r.timeout {
+		// Expired reassembly; start fresh
 		state = &reassemblyState{createdAt: now, total: total, parts: map[uint16][]byte{}}
 		r.streams[streamID] = state
+	} else if state.total != total {
+		// Reject frame with mismatched total to prevent stream corruption
+		return nil, false, fmt.Errorf("itox: add frame: total mismatch for stream %d (expected %d, got %d): %w", streamID, state.total, total, ErrInvalidFrame)
 	}
 	state.parts[index] = append([]byte(nil), payload...)
 
