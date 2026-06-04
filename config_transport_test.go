@@ -106,4 +106,110 @@ func TestConstructorWrappersAndSessionHelpers(t *testing.T) {
 	if tr.Registry() == nil {
 		t.Error("Registry() returned nil")
 	}
+	
+	// Test Addr()
+	if tr.Addr() == nil {
+		t.Error("Addr() returned nil")
+	}
+	
+	// Test Name()
+	if tr.Name() != "tox" {
+		t.Errorf("Name() = %q, want %q", tr.Name(), "tox")
+	}
+	
+	// Test SetIdentity
+	ri := makeTestRouterInfo(t, [32]byte{99})
+	if err := tr.SetIdentity(ri); err != nil {
+		t.Errorf("SetIdentity() error = %v", err)
+	}
+	
+	// Test peerKeyFromAddr with different inputs
+	toxAddr := ToxI2PAddr{PublicKey: [32]byte{1, 2, 3}}
+	if pk, ok := peerKeyFromAddr(toxAddr); !ok || pk != toxAddr.PublicKey {
+		t.Error("peerKeyFromAddr(ToxI2PAddr) failed")
+	}
+	
+	if _, ok := peerKeyFromAddr(nil); ok {
+		t.Error("peerKeyFromAddr(nil) should return false")
+	}
+}
+
+func TestSessionSendQueueSize(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var pk [32]byte
+	pk[0] = 1
+	noise := &mockNoiseTransport{}
+	cfg := Config{Context: ctx, FragmentTimeout: 30 * time.Second, RetryTimeout: time.Second, MaxSendQueue: 8, MaxSessions: 4}
+	acl := newFriendACLForTests(&mockACL{allowed: pk}, nil)
+	tr, err := newToxTransportWithDeps(cfg, noise, acl, &mockFriendStatus{pk: pk, status: toxcore.ConnectionUDP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tr.Close()
+	
+	ri := makeTestRouterInfo(t, pk)
+	if err := tr.Registry().Register(ri, pk); err != nil {
+		t.Fatal(err)
+	}
+	
+	sess, err := tr.GetSession(ri)
+	if err != nil {
+		t.Fatal(err)
+	}
+	
+	// Should be 0 initially
+	if size := sess.SendQueueSize(); size != 0 {
+		t.Errorf("SendQueueSize() = %d, want 0", size)
+	}
+}
+
+func TestDialerAndListener(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var pk [32]byte
+	pk[0] = 1
+	noise := &mockNoiseTransport{}
+	cfg := Config{Context: ctx, FragmentTimeout: 30 * time.Second, RetryTimeout: time.Second, MaxSendQueue: 8, MaxSessions: 4}
+	acl := newFriendACLForTests(&mockACL{allowed: pk}, nil)
+	tr, err := newToxTransportWithDeps(cfg, noise, acl, &mockFriendStatus{pk: pk, status: toxcore.ConnectionUDP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tr.Close()
+	
+	ri := makeTestRouterInfo(t, pk)
+	if err := tr.Registry().Register(ri, pk); err != nil {
+		t.Fatal(err)
+	}
+	
+	// Test DialRouter (wraps GetSession)
+	sess, err := tr.DialRouter(ri)
+	if err != nil {
+		t.Errorf("DialRouter() error = %v", err)
+	}
+	if sess == nil {
+		t.Error("DialRouter() returned nil session")
+	}
+}
+
+func TestNewToxTransportValidation(t *testing.T) {
+	ctx := context.Background()
+	
+	// Test with nil noise transport
+	cfg := DefaultConfig(new(toxcore.Tox), [32]byte{1}, makeTestRouterInfo(t, [32]byte{}))
+	cfg.Context = ctx
+	if _, err := NewToxTransport(cfg, nil); err == nil {
+		t.Error("NewToxTransport with nil noise should return error")
+	}
+	
+	// Test with invalid config (nil Tox)
+	cfg2 := Config{
+		Tox: nil, // invalid
+		LocalRouterInfo: makeTestRouterInfo(t, [32]byte{}),
+		Context: ctx,
+	}
+	if _, err := NewToxTransport(cfg2, &mockNoiseTransport{}); err == nil {
+		t.Error("NewToxTransport with nil Tox should return error")
+	}
 }

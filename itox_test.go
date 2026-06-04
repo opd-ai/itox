@@ -147,8 +147,19 @@ func TestTransportGetSessionAndCompatible(t *testing.T) {
 	}
 	defer tr.Close()
 
+	// Per spec: Compatible returns false for non-registered RouterInfos
+	if tr.Compatible(ri) {
+		t.Fatal("expected non-compatible router info before registration")
+	}
+	
+	// Register the peer in the PeerRegistry
+	if err := tr.Registry().Register(ri, pk); err != nil {
+		t.Fatalf("Registry().Register() failed: %v", err)
+	}
+	
+	// Now it should be compatible
 	if !tr.Compatible(ri) {
-		t.Fatal("expected compatible router info")
+		t.Fatal("expected compatible router info after registration")
 	}
 	sess, err := tr.GetSession(ri)
 	if err != nil {
@@ -187,6 +198,66 @@ func TestTransportAcceptRejectsUnauthorized(t *testing.T) {
 	case <-done:
 		t.Fatal("accept should still block for unauthorized peer")
 	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestTransportAcceptWithAuthorizedPeer(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var pk [32]byte
+	pk[0] = 1
+	noise := &mockNoiseTransport{}
+	cfg := Config{Context: ctx, FragmentTimeout: 30 * time.Second, RetryTimeout: time.Second, MaxSendQueue: 8, MaxSessions: 4}
+	acl := newFriendACLForTests(&mockACL{allowed: pk}, nil)
+	tr, err := newToxTransportWithDeps(cfg, noise, acl, &mockFriendStatus{pk: pk, status: toxcore.ConnectionUDP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tr.Close()
+
+	// Register the peer so they can be accepted
+	ri := makeTestRouterInfo(t, pk)
+	if err := tr.Registry().Register(ri, pk); err != nil {
+		t.Fatal(err)
+	}
+
+	// Send an inbound packet from an authorized friend
+	done := make(chan net.Conn, 1)
+	go func() {
+		conn, _ := tr.Accept()
+		done <- conn
+	}()
+
+	// Create a valid I2NP message and marshal it
+	msg := i2np.NewBaseI2NPMessage(7)
+	msg.SetData([]byte("test"))
+	msgBytes, err := msg.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create framing header
+	frame := make([]byte, 6+len(msgBytes))
+	// stream_id=0, frag_idx=0, total=1
+	frame[0] = 0
+	frame[1] = 0
+	frame[2] = 0
+	frame[3] = 0
+	frame[4] = 0
+	frame[5] = 1
+	copy(frame[6:], msgBytes)
+	
+	if err := tr.handleInboundPacket(&toxtransport.Packet{Data: frame}, ToxI2PAddr{PublicKey: pk}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case conn := <-done:
+		if conn == nil {
+			t.Fatal("expected non-nil connection")
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("Accept() timed out")
 	}
 }
 

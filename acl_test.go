@@ -36,7 +36,7 @@ func TestFriendACLIsAuthorized(t *testing.T) {
 
 	t.Run("unauthorized logs short key", func(t *testing.T) {
 		var buf bytes.Buffer
-		logger := slog.New(slog.NewTextHandler(&buf, nil))
+		logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		acl := newFriendACLForTests(&mockACLTox{lookupErr: errors.New("no friend")}, logger)
 		if acl.IsAuthorized(key) {
 			t.Fatal("expected unauthorized")
@@ -44,6 +44,64 @@ func TestFriendACLIsAuthorized(t *testing.T) {
 		out := buf.String()
 		if !strings.Contains(out, "tox_pubkey=4200000000000000") {
 			t.Fatalf("expected 8-byte key prefix in logs, got %q", out)
+		}
+	})
+	
+	t.Run("unauthorized with nil logger uses default", func(t *testing.T) {
+		acl := newFriendACLForTests(&mockACLTox{lookupErr: errors.New("no friend")}, nil)
+		if acl.IsAuthorized(key) {
+			t.Fatal("expected unauthorized")
+		}
+		// Should not panic
+	})
+	
+	t.Run("unauthorized with fully nil acl and logger", func(t *testing.T) {
+		acl := &FriendACL{tox: &mockACLTox{lookupErr: errors.New("no friend")}, logger: nil}
+		if acl.IsAuthorized(key) {
+			t.Fatal("expected unauthorized")
+		}
+		// Should not panic calling logUnauthorized with nil logger
+	})
+	
+	t.Run("nil acl returns false", func(t *testing.T) {
+		var acl *FriendACL
+		if acl.IsAuthorized(key) {
+			t.Fatal("expected nil acl to reject")
+		}
+	})
+	
+	t.Run("nil tox returns false", func(t *testing.T) {
+		acl := &FriendACL{tox: nil, logger: slog.Default()}
+		if acl.IsAuthorized(key) {
+			t.Fatal("expected nil tox to reject")
+		}
+	})
+	
+	t.Run("NewFriendACL with nil logger uses default", func(t *testing.T) {
+		acl := newFriendACLForTests(&mockACLTox{friends: map[uint32]*toxcore.Friend{1: {PublicKey: key}}}, nil)
+		if acl.logger == nil {
+			t.Fatal("expected default logger when nil provided")
+		}
+	})
+	
+	t.Run("NewFriendACL constructor", func(t *testing.T) {
+		// Test with non-nil logger
+		logger := slog.Default()
+		acl := NewFriendACL(new(toxcore.Tox), logger)
+		if acl == nil {
+			t.Fatal("NewFriendACL returned nil")
+		}
+		if acl.logger != logger {
+			t.Error("NewFriendACL didn't preserve logger")
+		}
+		
+		// Test with nil logger (should use default)
+		acl2 := NewFriendACL(new(toxcore.Tox), nil)
+		if acl2 == nil {
+			t.Fatal("NewFriendACL with nil logger returned nil")
+		}
+		if acl2.logger == nil {
+			t.Error("NewFriendACL with nil logger didn't set default")
 		}
 	})
 }
