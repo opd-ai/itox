@@ -456,9 +456,12 @@ func createNoiseTransport(ctx context.Context, toxSecretKey [32]byte, udpPort in
 		return nil, fmt.Errorf("create negotiating transport: %w", err)
 	}
 
-	logger.Info("NegotiatingTransport created with advanced security features",
+	// NegotiatingTransport will automatically negotiate protocol version with peers.
+	// When both peers support it, Noise-IK with Double Ratchet (signal-like forward secrecy) is used.
+	// When negotiation fails or peer doesn't support Noise-IK, automatic fallback to legacy protocol occurs.
+	logger.Info("NegotiatingTransport created",
 		slog.String("policy", capabilities.SessionPolicy.String()),
-		slog.String("note", "Negotiation will use Noise-IK with Double Ratchet when both peers support it, with fallback to legacy for compatibility"),
+		slog.Bool("legacy_fallback_enabled", capabilities.EnableLegacyFallback),
 	)
 	return itox.NewNegotiatingTransportAdapter(negotiatingTransport), nil
 }
