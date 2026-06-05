@@ -27,7 +27,7 @@ jobs:
           git tag -d latest 2>/dev/null || true
           
           # Delete remote tag if it exists using GitHub API
-          if git rev-parse origin/latest >/dev/null 2>&1; then
+          if git ls-remote --tags origin latest | grep -q latest; then
             curl -X DELETE \
               -H "Authorization: token $GITHUB_TOKEN" \
               -H "Accept: application/vnd.github+json" \
@@ -41,7 +41,7 @@ jobs:
             https://api.github.com/repos/${{ github.repository }}/releases/tags/latest \
             | jq -r '.id // empty')
           
-          if [ ! -z "$RELEASE_ID" ] && [ "$RELEASE_ID" != "null" ]; then
+          if [ -n "$RELEASE_ID" ] && [ "$RELEASE_ID" != "null" ]; then
             curl -X DELETE \
               -H "Authorization: token $GITHUB_TOKEN" \
               -H "Accept: application/vnd.github+json" \
