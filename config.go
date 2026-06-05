@@ -12,7 +12,7 @@ import (
 
 const (
 	// defaultFragmentTimeout is the duration a reassembler waits for missing fragments
-	// before discarding an incomplete message. 30 seconds allows ~66KB messages at 2KB/s rate.
+	// before discarding an incomplete message. 30 seconds allows ~60KB messages at 2KB/s rate.
 	defaultFragmentTimeout = 30 * time.Second
 	
 	// defaultRetryTimeout bounds the total time spent retrying Noise session sends/handshake probes
