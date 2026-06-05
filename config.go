@@ -15,8 +15,8 @@ const (
 	// before discarding an incomplete message. 30 seconds allows ~66KB messages at 2KB/s rate.
 	defaultFragmentTimeout = 30 * time.Second
 	
-	// defaultRetryTimeout is the maximum backoff duration when retrying failed sends,
-	// capped at 500ms on each retry to prevent message delivery delays.
+	// defaultRetryTimeout bounds the total time spent retrying Noise session sends/handshake probes
+	// before giving up. Individual retries use exponential backoff capped at 500ms.
 	defaultRetryTimeout = 10 * time.Second
 	
 	defaultMaxSessions           = 256
