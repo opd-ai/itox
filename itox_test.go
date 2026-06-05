@@ -522,3 +522,33 @@ func TestNoNetDBWrite(t *testing.T) {
 	// not importing any lib/netdb package and RouterInfo being used purely
 	// for identity hash extraction via PeerRegistry.
 }
+
+// TestQueueSendI2NPRaceWithClose verifies that concurrent calls to QueueSendI2NP
+// and Close() do not panic. Run with -race to detect data races.
+func TestQueueSendI2NPRaceWithClose(t *testing.T) {
+	const workers = 8
+	const iterations = 200
+
+	for trial := 0; trial < 10; trial++ {
+		noise := &mockNoiseTransport{}
+		s := newToxSession(context.Background(), ToxI2PAddr{}, noise, 30*time.Second, time.Second, 64, 256, nil, nil)
+
+		var wg sync.WaitGroup
+		for i := 0; i < workers; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for j := 0; j < iterations; j++ {
+					msg := i2np.NewBaseI2NPMessage(42)
+					msg.SetData([]byte("race-test"))
+					_ = s.QueueSendI2NP(msg)
+				}
+			}()
+		}
+
+		// Close the session while senders are still running.
+		go s.Close()
+
+		wg.Wait()
+	}
+}
