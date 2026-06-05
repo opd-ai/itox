@@ -11,12 +11,21 @@ import (
 )
 
 const (
-	defaultFragmentTimeout       = 30 * time.Second
-	defaultRetryTimeout          = 10 * time.Second
+	// defaultFragmentTimeout is the duration a reassembler waits for missing fragments
+	// before discarding an incomplete message. 30 seconds allows ~60KB messages at 2KB/s rate.
+	defaultFragmentTimeout = 30 * time.Second
+	
+	// defaultRetryTimeout bounds the total time spent retrying Noise session sends/handshake probes
+	// before giving up. Individual retries use exponential backoff capped at 500ms.
+	defaultRetryTimeout = 10 * time.Second
+	
 	defaultMaxSessions           = 256
 	defaultMaxSendQueue          = 128
 	defaultMaxConcurrentStreams  = 256
-	defaultFriendSyncInterval    = 30 * time.Second
+	
+	// defaultFriendSyncInterval is how often the transport checks the Tox friend list
+	// to update which peers are reachable. 30 seconds provides timely friend removal detection.
+	defaultFriendSyncInterval = 30 * time.Second
 )
 
 type Config struct {
@@ -33,6 +42,9 @@ type Config struct {
 	Logger                  *slog.Logger
 }
 
+// DefaultConfig returns a Config struct with all required fields populated and
+// reasonable default values. The Context is set to context.Background() and Logger to slog.Default().
+// Callers may override these defaults after creation if needed.
 func DefaultConfig(tox *toxcore.Tox, secretKey [32]byte, ri router_info.RouterInfo) Config {
 	return Config{
 		Tox:                    tox,
