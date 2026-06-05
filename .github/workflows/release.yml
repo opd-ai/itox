@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Latest Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete old latest tag and release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Delete local tag if it exists
+          git tag -d latest 2>/dev/null || true
+          
+          # Delete remote tag if it exists using GitHub API
+          if git ls-remote --tags origin latest | grep -q latest; then
+            curl -X DELETE \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/${{ github.repository }}/git/refs/tags/latest
+          fi
+          
+          # Delete GitHub release if it exists
+          RELEASE_ID=$(curl -s \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/releases/tags/latest \
+            | jq -r '.id // empty')
+          
+          if [ -n "$RELEASE_ID" ] && [ "$RELEASE_ID" != "null" ]; then
+            curl -X DELETE \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID
+          fi
+
+      - name: Configure git authentication
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create latest tag and release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          COMMIT_SHA=${{ github.sha }}
+          COMMIT_MSG=$(git log -1 --format=%B "$COMMIT_SHA")
+          COMMIT_AUTHOR=$(git log -1 --format=%an "$COMMIT_SHA")
+          
+          # Create the latest tag pointing to HEAD
+          git tag latest HEAD
+          
+          # Push the tag with authentication via token
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git latest --force
+          
+          # Create release with the tag
+          RELEASE_PAYLOAD=$(jq -n \
+            --arg tag_name "latest" \
+            --arg name "Latest Build" \
+            --arg sha "$COMMIT_SHA" \
+            --arg author "$COMMIT_AUTHOR" \
+            --arg msg "$COMMIT_MSG" \
+            '{tag_name: $tag_name, name: $name, body: ("Latest build from commit: " + $sha + "\n\nAuthor: " + $author + "\n\nCommit message:\n\n" + $msg), draft: false, prerelease: false}')
+          
+          curl -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/releases \
+            -d "$RELEASE_PAYLOAD"
