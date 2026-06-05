@@ -211,7 +211,7 @@ func (t *ToxTransport) waitHandshake(addr net.Addr) error {
 
 // Accept blocks until the next inbound authorized connection handle is enqueued.
 // If no Accept() calls drain the channel and the accept queue fills to capacity
-// (MaxSessions), new inbound connections will be silently dropped with a WARN-level log.
+// (MaxSessions), new inbound connections will be dropped with a WARN-level log.
 // Applications must call Accept() regularly to receive all inbound connections.
 func (t *ToxTransport) Accept() (net.Conn, error) {
 	select {
