@@ -18,6 +18,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Delete old latest tag and release
         env:
@@ -48,12 +49,12 @@ jobs:
               https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID
           fi
 
-      - name: Create latest tag
+      - name: Configure git authentication
         run: |
-          git tag latest
-          git push origin latest --force
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Create latest release
+      - name: Create latest tag and release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -61,7 +62,14 @@ jobs:
           COMMIT_MSG=$(git log -1 --format=%B "$COMMIT_SHA")
           COMMIT_AUTHOR=$(git log -1 --format=%an "$COMMIT_SHA")
           
-          PAYLOAD=$(jq -n \
+          # Create the latest tag pointing to HEAD
+          git tag latest HEAD
+          
+          # Push the tag with authentication via token
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git latest --force
+          
+          # Create release with the tag
+          RELEASE_PAYLOAD=$(jq -n \
             --arg tag_name "latest" \
             --arg name "Latest Build" \
             --arg sha "$COMMIT_SHA" \
@@ -73,4 +81,4 @@ jobs:
             -H "Authorization: token $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/${{ github.repository }}/releases \
-            -d "$PAYLOAD"
+            -d "$RELEASE_PAYLOAD"
