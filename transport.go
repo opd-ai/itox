@@ -52,6 +52,9 @@ type ToxTransport struct {
 
 var _ i2ptransport.Transport = (*ToxTransport)(nil)
 
+// NewToxTransport creates a new ToxTransport instance that implements the I2P transport.Transport interface.
+// It requires a valid Config with a non-nil Tox client and noise transport, and integrates with the
+// go-i2p router's transport muxer for Tox friend-to-friend communication.
 func NewToxTransport(cfg Config, noise transportNoise) (*ToxTransport, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("itox: new transport: %w", err)
@@ -207,6 +210,9 @@ func (t *ToxTransport) waitHandshake(addr net.Addr) error {
 }
 
 // Accept blocks until the next inbound authorized connection handle is enqueued.
+// If no Accept() calls drain the channel and the accept queue fills to capacity
+// (MaxSessions), new inbound connections will be silently dropped with a WARN-level log.
+// Applications must call Accept() regularly to receive all inbound connections.
 func (t *ToxTransport) Accept() (net.Conn, error) {
 	select {
 	case conn := <-t.acceptCh:
@@ -266,6 +272,12 @@ func (t *ToxTransport) handleInboundPacket(packet *toxtransport.Packet, addr net
 	select {
 	case t.acceptCh <- &toxConn{local: t.Addr(), remote: addr}:
 	default:
+		// Accept queue is full; drop the connection notification to prevent blocking.
+		// This occurs when Accept() is not being called frequently enough or the accept
+		// queue capacity (MaxSessions) is too small for the rate of inbound connections.
+		t.logger.Warn("itox: inbound connection dropped (accept queue full)",
+			slog.String("peer", hex.EncodeToString(peer[:8])),
+		)
 	}
 	return nil
 }

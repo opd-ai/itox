@@ -70,9 +70,6 @@ func (s *ToxSession) QueueSendI2NP(msg i2np.Message) error {
 	select {
 	case <-s.closed:
 		return fmt.Errorf("itox: queue send i2np: %w", ErrSessionClosed)
-	default:
-	}
-	select {
 	case s.sendQ <- msg:
 		return nil
 	default:

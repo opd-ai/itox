@@ -59,7 +59,12 @@ func (r *PeerRegistry) Resolve(ri router_info.RouterInfo) ([32]byte, error) {
 		return [32]byte{}, ErrPeerNotRegistered
 	}
 
-	// Re-validate friend status
+	// Re-validate friend status outside the lock to avoid holding the lock
+	// during potentially slow IsAuthorized() calls.
+	// Note: There is a brief window where friend status could change between
+	// the registration check and the authorization check, but this is acceptable:
+	// it means we might return ErrNotFriend immediately after a friend is removed,
+	// even if they were technically registered at lookup time.
 	if !r.acl.IsAuthorized(toxPubKey) {
 		return [32]byte{}, ErrNotFriend
 	}
@@ -100,10 +105,19 @@ func (r *PeerRegistry) IsKnown(ri router_info.RouterInfo) bool {
 // KnownPeers returns all registered Tox public keys that are current friends.
 func (r *PeerRegistry) KnownPeers() [][32]byte {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	var peers [][32]byte
+	// Pre-fetch all entries under the lock to avoid holding the lock
+	// while calling IsAuthorized(), which may block on Tox client I/O.
+	entries := make([][32]byte, 0, len(r.entries))
 	for _, toxPubKey := range r.entries {
+		entries = append(entries, toxPubKey)
+	}
+	r.mu.RUnlock()
+
+	// Now filter by friend status outside the lock.
+	// This avoids holding the lock during potentially slow IsAuthorized() calls
+	// and prevents denial-of-service through slow Tox client operations.
+	var peers [][32]byte
+	for _, toxPubKey := range entries {
 		if r.acl.IsAuthorized(toxPubKey) {
 			peers = append(peers, toxPubKey)
 		}
