@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Latest Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Delete old latest tag and release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Delete local tag if it exists
+          git tag -d latest 2>/dev/null || true
+          
+          # Delete remote tag if it exists using GitHub API
+          if git rev-parse origin/latest >/dev/null 2>&1; then
+            curl -X DELETE \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/${{ github.repository }}/git/refs/tags/latest
+          fi
+          
+          # Delete GitHub release if it exists
+          RELEASE_ID=$(curl -s \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/releases/tags/latest \
+            | jq -r '.id // empty')
+          
+          if [ ! -z "$RELEASE_ID" ] && [ "$RELEASE_ID" != "null" ]; then
+            curl -X DELETE \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID
+          fi
+
+      - name: Create latest tag
+        run: |
+          git tag latest HEAD
+          git push origin latest --force
+
+      - name: Create latest release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          COMMIT_SHA=${{ github.sha }}
+          COMMIT_MSG=$(git log -1 --format=%B $COMMIT_SHA)
+          COMMIT_AUTHOR=$(git log -1 --format=%an $COMMIT_SHA)
+          
+          curl -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/releases \
+            -d @- << EOF
+          {
+            "tag_name": "latest",
+            "name": "Latest Build",
+            "body": "Latest build from commit: $COMMIT_SHA\n\nAuthor: $COMMIT_AUTHOR\n\nCommit message:\n\n$COMMIT_MSG",
+            "draft": false,
+            "prerelease": false
+          }
+          EOF
