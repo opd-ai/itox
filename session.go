@@ -67,9 +67,14 @@ func newToxSession(ctx context.Context, remoteAddr net.Addr, noise noiseSender, 
 // QueueSendI2NP enqueues an I2NP message to be sent through this session.
 // Returns ErrSessionClosed if the session is closed, or ErrSendQueueFull if the send queue is full.
 func (s *ToxSession) QueueSendI2NP(msg i2np.Message) error {
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
 	select {
-	case <-s.closed:
+	case <-s.closing:
 		return fmt.Errorf("itox: queue send i2np: %w", ErrSessionClosed)
+	default:
+	}
+	select {
 	case s.sendQ <- msg:
 		return nil
 	default:
