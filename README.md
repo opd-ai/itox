@@ -51,3 +51,9 @@ mux := transport.Mux(ntcp2Transport, ssu2Transport, itoxTransport)
 - Non-friends are silently rejected with debug-level logging only
 - No RouterInfo netDB publication performed by this package
 - RouterInfo shared out-of-band; PeerRegistry maps identity hash to Tox pubkey locally
+
+Donate Monero(The only good cryptocurrency) to support development
+==================================================================
+
+ - `monero:43H3Uqnc9rfEsJjUXZYmam45MbtWmREFSANAWY5hijY4aht8cqYaT2BCNhfBhua5XwNdx9Tb6BEdt4tjUHJDwNW5H7mTiwe`
+
